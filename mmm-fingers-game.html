@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Mmm Fingers Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        #gameContainer {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #gameCanvas {
+            background: linear-gradient(to bottom, #87CEEB 0%, #E0F6FF 100%);
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            max-width: 100%;
+            max-height: 90vh;
+            touch-action: none;
+            will-change: transform;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        #score {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px 40px;
+            border-radius: 20px;
+            text-align: center;
+            display: none;
+            z-index: 100;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        #gameOver h2 {
+            font-size: 32px;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        #finalScore {
+            font-size: 24px;
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        #restartBtn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #restartBtn:active {
+            transform: scale(0.95);
+        }
+
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            text-align: center;
+            font-size: 16px;
+            opacity: 0.8;
+            pointer-events: none;
+        }
+
+        @media (max-width: 480px) {
+            #score {
+                font-size: 20px;
+                padding: 8px 16px;
+            }
+            #gameOver h2 {
+                font-size: 28px;
+            }
+            #finalScore {
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div id="ui">
+            <div id="score">Score: 0</div>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+        <div id="instructions">Tap to open mouth and catch food!</div>
+        <div id="gameOver">
+            <h2>Game Over!</h2>
+            <div id="finalScore">Final Score: 0</div>
+            <button id="restartBtn">Play Again</button>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            'use strict';
+
+            // Get canvas and context
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            const scoreEl = document.getElementById('score');
+            const gameOverEl = document.getElementById('gameOver');
+            const finalScoreEl = document.getElementById('finalScore');
+            const restartBtn = document.getElementById('restartBtn');
+
+            // Set canvas size
+            function resizeCanvas() {
+                const maxWidth = Math.min(window.innerWidth - 40, 500);
+                const maxHeight = Math.min(window.innerHeight - 100, 700);
+                canvas.width = maxWidth;
+                canvas.height = maxHeight;
+            }
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            // Game state
+            let score = 0;
+            let gameRunning = false;
+            let animationId = null;
+            let lastTime = 0;
+
+            // Character properties
+            const character = {
+                x: 0,
+                y: 0,
+                width: 80,
+                height: 80,
+                mouthOpen: false,
+                mouthOpenTime: 0,
+                mouthOpenDuration: 200 // ms
+            };
+
+            // Food items
+            const foods = [];
+            const foodTypes = [
+                { color: '#FF6B6B', points: 10, size: 20 },
+                { color: '#4ECDC4', points: 15, size: 25 },
+                { color: '#FFE66D', points: 20, size: 30 },
+                { color: '#95E1D3', points: 25, size: 35 }
+            ];
+
+            // Game settings
+            const settings = {
+                foodSpawnRate: 0.02, // probability per frame
+                foodSpeed: 2,
+                gravity: 0.1
+            };
+
+            // Initialize character position
+            function initCharacter() {
+                character.x = canvas.width / 2 - character.width / 2;
+                character.y = canvas.height - character.height - 20;
+            }
+
+            // Draw character
+            function drawCharacter() {
+                const centerX = character.x + character.width / 2;
+                const centerY = character.y + character.height / 2;
+
+                // Body (circle)
+                ctx.fillStyle = '#FF6B9D';
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, character.width / 2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Eyes
+                ctx.fillStyle = '#FFF';
+                ctx.beginPath();
+                ctx.arc(centerX - 15, centerY - 15, 8, 0, Math.PI * 2);
+                ctx.arc(centerX + 15, centerY - 15, 8, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.arc(centerX - 15, centerY - 15, 4, 0, Math.PI * 2);
+                ctx.arc(centerX + 15, centerY - 15, 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Mouth
+                if (character.mouthOpen) {
+                    ctx.fillStyle = '#000';
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY + 10, 25, 0, Math.PI * 2);
+                    ctx.fill();
+                } else {
+                    // Closed mouth (line)
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(centerX - 20, centerY + 10);
+                    ctx.lineTo(centerX + 20, centerY + 10);
+                    ctx.stroke();
+                }
+            }
+
+            // Spawn food
+            function spawnFood() {
+                if (Math.random() < settings.foodSpawnRate) {
+                    const type = foodTypes[Math.floor(Math.random() * foodTypes.length)];
+                    foods.push({
+                        x: Math.random() * (canvas.width - type.size),
+                        y: -type.size,
+                        vx: (Math.random() - 0.5) * 1,
+                        vy: settings.foodSpeed + Math.random() * 1,
+                        type: type,
+                        rotation: Math.random() * Math.PI * 2,
+                        rotationSpeed: (Math.random() - 0.5) * 0.1
+                    });
+                }
+            }
+
+            // Draw food
+            function drawFood(food) {
+                ctx.save();
+                ctx.translate(food.x + food.type.size / 2, food.y + food.type.size / 2);
+                ctx.rotate(food.rotation);
+                ctx.fillStyle = food.type.color;
+                ctx.beginPath();
+                ctx.arc(0, 0, food.type.size / 2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // Update food
+            function updateFood(food, deltaTime) {
+                // Use frame-based movement for consistent performance
+                food.x += food.vx;
+                food.y += food.vy;
+                food.vy += settings.gravity;
+                food.rotation += food.rotationSpeed;
+
+                // Check collision with character
+                if (character.mouthOpen) {
+                    const charCenterX = character.x + character.width / 2;
+                    const charCenterY = character.y + character.height / 2;
+                    const foodCenterX = food.x + food.type.size / 2;
+                    const foodCenterY = food.y + food.type.size / 2;
+                    const distance = Math.sqrt(
+                        Math.pow(charCenterX - foodCenterX, 2) + 
+                        Math.pow(charCenterY - foodCenterY, 2)
+                    );
+
+                    if (distance < character.width / 2 + food.type.size / 2) {
+                        score += food.type.points;
+                        scoreEl.textContent = `Score: ${score}`;
+                        return { remove: true, gameOver: false }; // Remove food, no game over
+                    }
+                }
+
+                // Check if food hit ground
+                if (food.y > canvas.height) {
+                    return { remove: true, gameOver: true }; // Remove food, game over
+                }
+
+                return { remove: false, gameOver: false }; // Keep food
+            }
+
+            // Game loop - optimized for iOS Safari/WKWebView
+            function gameLoop(currentTime) {
+                if (!gameRunning) return;
+
+                const deltaTime = currentTime - lastTime;
+                lastTime = currentTime;
+
+                // Limit delta time to prevent large jumps
+                const clampedDelta = Math.min(deltaTime, 50);
+
+                // Clear canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Update character mouth
+                if (character.mouthOpen) {
+                    character.mouthOpenTime += clampedDelta;
+                    if (character.mouthOpenTime >= character.mouthOpenDuration) {
+                        character.mouthOpen = false;
+                        character.mouthOpenTime = 0;
+                    }
+                }
+
+                // Spawn food
+                spawnFood();
+
+                // Update and draw foods
+                for (let i = foods.length - 1; i >= 0; i--) {
+                    const food = foods[i];
+                    const result = updateFood(food, deltaTime);
+                    if (result.remove) {
+                        foods.splice(i, 1);
+                        // Check if food hit ground (game over condition)
+                        if (result.gameOver) {
+                            endGame();
+                            return;
+                        }
+                    } else {
+                        drawFood(food);
+                    }
+                }
+
+                // Draw character
+                drawCharacter();
+
+                animationId = requestAnimationFrame(gameLoop);
+            }
+
+            // Start game
+            function startGame() {
+                score = 0;
+                foods.length = 0;
+                gameRunning = true;
+                lastTime = performance.now();
+                scoreEl.textContent = `Score: 0`;
+                gameOverEl.style.display = 'none';
+                initCharacter();
+                animationId = requestAnimationFrame(gameLoop);
+            }
+
+            // End game
+            function endGame() {
+                gameRunning = false;
+                if (animationId) {
+                    cancelAnimationFrame(animationId);
+                }
+                finalScoreEl.textContent = `Final Score: ${score}`;
+                gameOverEl.style.display = 'block';
+            }
+
+            // Open mouth on tap/click
+            function openMouth() {
+                if (!gameRunning) return;
+                character.mouthOpen = true;
+                character.mouthOpenTime = 0;
+            }
+
+            // Event listeners - optimized for mobile
+            canvas.addEventListener('touchstart', function(e) {
+                e.preventDefault();
+                openMouth();
+            }, { passive: false });
+
+            canvas.addEventListener('touchend', function(e) {
+                e.preventDefault();
+            }, { passive: false });
+
+            canvas.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                openMouth();
+            });
+
+            restartBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                startGame();
+            });
+
+            // Prevent default touch behaviors
+            document.addEventListener('touchmove', function(e) {
+                e.preventDefault();
+            }, { passive: false });
+
+            // Initialize
+            initCharacter();
+            startGame();
+        })();
+    </script>
+</body>
+</html>
