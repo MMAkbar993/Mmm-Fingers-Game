@@ -33,8 +33,8 @@
         width: 80,
         height: 80,
         mouthOpen: false,
-        mouthOpenTime: 0,
-        mouthOpenDuration: 200 // ms
+        speed: 5, // pixels per frame
+        targetX: 0 // target position for smooth movement
     };
 
     // Food items
@@ -56,6 +56,7 @@
     // Initialize character position
     function initCharacter() {
         character.x = canvas.width / 2 - character.width / 2;
+        character.targetX = character.x;
         character.y = canvas.height - character.height - 20;
     }
 
@@ -175,14 +176,24 @@
         // Clear canvas
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Update character mouth
-        if (character.mouthOpen) {
-            character.mouthOpenTime += clampedDelta;
-            if (character.mouthOpenTime >= character.mouthOpenDuration) {
-                character.mouthOpen = false;
-                character.mouthOpenTime = 0;
-            }
+        // Update character position (smooth movement)
+        const diff = character.targetX - character.x;
+        if (Math.abs(diff) > 0.5) {
+            character.x += diff * 0.2; // Smooth interpolation
+        } else {
+            character.x = character.targetX;
         }
+        
+        // Keep character within canvas bounds
+        if (character.x < 0) {
+            character.x = 0;
+            character.targetX = 0;
+        } else if (character.x > canvas.width - character.width) {
+            character.x = canvas.width - character.width;
+            character.targetX = canvas.width - character.width;
+        }
+
+        // Mouth stays open once tapped (no auto-close)
 
         // Spawn food
         spawnFood();
@@ -217,6 +228,7 @@
         lastTime = performance.now();
         scoreEl.textContent = `Score: 0`;
         gameOverEl.style.display = 'none';
+        character.mouthOpen = false; // Reset mouth on restart
         initCharacter();
         animationId = requestAnimationFrame(gameLoop);
     }
@@ -231,26 +243,84 @@
         gameOverEl.style.display = 'block';
     }
 
-    // Open mouth on tap/click
+    // Touch/Mouse tracking for movement
+    let touchStartX = 0;
+    let isDragging = false;
+    let lastTouchX = 0;
+
+    // Move character to target position
+    function moveCharacter(targetX) {
+        if (!gameRunning) return;
+        // Convert screen coordinates to canvas coordinates
+        const rect = canvas.getBoundingClientRect();
+        const canvasX = targetX - rect.left;
+        const scaleX = canvas.width / rect.width;
+        const actualX = canvasX * scaleX;
+        
+        // Set target position (center character on touch point)
+        character.targetX = actualX - character.width / 2;
+        
+        // Keep within bounds
+        if (character.targetX < 0) character.targetX = 0;
+        if (character.targetX > canvas.width - character.width) {
+            character.targetX = canvas.width - character.width;
+        }
+    }
+
+    // Open mouth on tap/click (stays open)
     function openMouth() {
         if (!gameRunning) return;
-        character.mouthOpen = true;
-        character.mouthOpenTime = 0;
+        character.mouthOpen = true; // Mouth stays open until game restarts
     }
 
     // Event listeners - optimized for mobile
     canvas.addEventListener('touchstart', function(e) {
         e.preventDefault();
+        const touch = e.touches[0];
+        touchStartX = touch.clientX;
+        lastTouchX = touch.clientX;
+        isDragging = true;
+        moveCharacter(touch.clientX);
         openMouth();
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', function(e) {
+        e.preventDefault();
+        if (isDragging && e.touches.length > 0) {
+            const touch = e.touches[0];
+            lastTouchX = touch.clientX;
+            moveCharacter(touch.clientX);
+        }
     }, { passive: false });
 
     canvas.addEventListener('touchend', function(e) {
         e.preventDefault();
+        isDragging = false;
     }, { passive: false });
 
     canvas.addEventListener('mousedown', function(e) {
         e.preventDefault();
+        isDragging = true;
+        lastTouchX = e.clientX;
+        moveCharacter(e.clientX);
         openMouth();
+    });
+
+    canvas.addEventListener('mousemove', function(e) {
+        if (isDragging) {
+            e.preventDefault();
+            lastTouchX = e.clientX;
+            moveCharacter(e.clientX);
+        }
+    });
+
+    canvas.addEventListener('mouseup', function(e) {
+        e.preventDefault();
+        isDragging = false;
+    });
+
+    canvas.addEventListener('mouseleave', function(e) {
+        isDragging = false;
     });
 
     restartBtn.addEventListener('click', function(e) {
@@ -258,9 +328,12 @@
         startGame();
     });
 
-    // Prevent default touch behaviors
+    // Prevent default touch behaviors (but allow canvas touchmove)
     document.addEventListener('touchmove', function(e) {
-        e.preventDefault();
+        // Only prevent default if not touching the canvas
+        if (e.target !== canvas && !canvas.contains(e.target)) {
+            e.preventDefault();
+        }
     }, { passive: false });
 
     // Initialize
