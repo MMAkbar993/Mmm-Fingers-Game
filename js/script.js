@@ -16,6 +16,15 @@
     let audioContext = null;
     let backgroundMusicPlaying = false;
     let lastMilestoneScore = 0;
+    
+    // Particle system for visual effects
+    const particles = [];
+    
+    // Haptic feedback support
+    let hapticEnabled = false;
+    if ('vibrate' in navigator) {
+        hapticEnabled = true;
+    }
 
     // Set canvas size
     function resizeCanvas() {
@@ -95,12 +104,117 @@
         oscillator.stop(audioContext.currentTime + duration);
     }
     
+    // Enhanced SFX system
+    function playSwipeSound() {
+        // Soft whoosh sound for swiping
+        playTone(200, 0.05, 'sine', 0.15);
+        playTone(300, 0.05, 'sine', 0.1);
+    }
+    
+    function playScoreSound() {
+        // Pleasant tick sound for score increase
+        playTone(600, 0.08, 'sine', 0.2);
+    }
+    
+    function playCollisionSound() {
+        // Harsh sound for collision
+        playTone(150, 0.2, 'sawtooth', 0.4);
+        playTone(100, 0.2, 'sawtooth', 0.3);
+    }
+    
+    function playNearMissSound() {
+        // Warning sound when close to monster
+        playTone(400, 0.1, 'sine', 0.15);
+    }
+    
+    function playLevelUpSound() {
+        // Ascending chord for level up
+        playTone(523, 0.15, 'sine', 0.25); // C5
+        setTimeout(() => playTone(659, 0.15, 'sine', 0.25), 100); // E5
+        setTimeout(() => playTone(784, 0.2, 'sine', 0.25), 200); // G5
+    }
+    
+    // Haptic feedback system
+    function triggerHaptic(pattern) {
+        if (!hapticEnabled) return;
+        try {
+            if (typeof pattern === 'number') {
+                navigator.vibrate(pattern);
+            } else {
+                navigator.vibrate(pattern);
+            }
+        } catch (e) {
+            // Haptic not supported or failed
+        }
+    }
+    
+    function hapticSwipe() {
+        triggerHaptic(10); // Short vibration for swipe
+    }
+    
+    function hapticCollision() {
+        triggerHaptic([50, 30, 50]); // Strong vibration pattern for collision
+    }
+    
+    function hapticNearMiss() {
+        triggerHaptic(20); // Medium vibration for near miss
+    }
+    
+    function hapticScore() {
+        triggerHaptic(5); // Very light vibration for score
+    }
+    
+    function hapticLevelUp() {
+        triggerHaptic([30, 50, 30, 50]); // Celebration pattern
+    }
+    
     // Play milestone sound (100, 200, 300, etc.)
     function playMilestoneSound() {
         // Play a pleasant ascending tone
         playTone(440, 0.1, 'sine', 0.2); // A4
         setTimeout(() => playTone(554, 0.1, 'sine', 0.2), 100); // C#5
         setTimeout(() => playTone(659, 0.15, 'sine', 0.2), 200); // E5
+        hapticLevelUp();
+    }
+    
+    // Create particle effect
+    function createParticles(x, y, color, count = 8) {
+        for (let i = 0; i < count; i++) {
+            particles.push({
+                x: x,
+                y: y,
+                vx: (Math.random() - 0.5) * 4,
+                vy: (Math.random() - 0.5) * 4,
+                life: 1.0,
+                decay: 0.02 + Math.random() * 0.02,
+                size: 3 + Math.random() * 4,
+                color: color
+            });
+        }
+    }
+    
+    // Update and draw particles
+    function updateParticles() {
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vx *= 0.95;
+            p.vy *= 0.95;
+            p.life -= p.decay;
+            
+            if (p.life <= 0) {
+                particles.splice(i, 1);
+            } else {
+                ctx.save();
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
     }
     
     // Play new record sound
@@ -245,48 +359,68 @@
         finger.trail = [];
     }
 
-    // Draw finger
+    // Draw finger with enhanced visuals
     function drawFinger() {
         const x = finger.x;
         const y = finger.y;
 
-        // Shadow
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+        // Outer glow
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
+        
+        // Shadow with blur
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
         ctx.beginPath();
         ctx.ellipse(x, y + finger.height / 2 + 5, finger.width / 2, 8, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        // Finger body (skin tone)
-        ctx.fillStyle = '#FFDBAC';
+        // Finger body (skin tone) with gradient
+        const gradient = ctx.createRadialGradient(x - 5, y - 10, 0, x, y, finger.height / 2);
+        gradient.addColorStop(0, '#FFE5CC');
+        gradient.addColorStop(1, '#FFDBAC');
+        
+        ctx.fillStyle = gradient;
         ctx.strokeStyle = '#E8C5A0';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
         ctx.ellipse(x, y, finger.width / 2, finger.height / 2, -0.3, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
 
-        // Fingernail
+        // Fingernail with shine
         ctx.fillStyle = '#FFE5CC';
         ctx.beginPath();
         ctx.ellipse(x - 5, y - finger.height / 2 + 8, 12, 8, -0.3, 0, Math.PI * 2);
         ctx.fill();
+        
+        // Nail highlight
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.beginPath();
+        ctx.ellipse(x - 7, y - finger.height / 2 + 6, 4, 3, -0.3, 0, Math.PI * 2);
+        ctx.fill();
 
         // Finger tip highlight
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
         ctx.beginPath();
         ctx.ellipse(x - 8, y - finger.height / 2 + 5, 6, 4, -0.3, 0, Math.PI * 2);
         ctx.fill();
+        
+        // Reset shadow
+        ctx.shadowBlur = 0;
     }
 
-    // Draw trail
+    // Draw enhanced trail with glow effect
     function drawTrail() {
         if (finger.trail.length < 2) return;
 
+        // Outer glow
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#87CEEB';
         ctx.strokeStyle = '#87CEEB';
-        ctx.lineWidth = 8;
+        ctx.lineWidth = 12;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        ctx.globalAlpha = 0.6;
+        ctx.globalAlpha = 0.3;
 
         ctx.beginPath();
         ctx.moveTo(finger.trail[0].x, finger.trail[0].y);
@@ -294,7 +428,25 @@
             ctx.lineTo(finger.trail[i].x, finger.trail[i].y);
         }
         ctx.stroke();
+
+        // Main trail
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#4ECDC4';
+        ctx.strokeStyle = '#87CEEB';
+        ctx.lineWidth = 10;
+        ctx.globalAlpha = 0.7;
+        ctx.stroke();
+
+        // Inner bright trail
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 6;
+        ctx.globalAlpha = 0.9;
+        ctx.stroke();
+
+        // Reset
         ctx.globalAlpha = 1.0;
+        ctx.shadowBlur = 0;
     }
 
     // Spawn monster - only from top, moving downward
@@ -336,14 +488,36 @@
         const size = typeDef.size;
 
         if (typeDef.type === 'circular') {
-            // Green circular spiky monster
+            // Green circular spiky monster with glow
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = typeDef.color;
+            
+            // Outer glow
             ctx.fillStyle = typeDef.color;
+            ctx.globalAlpha = 0.3;
+            ctx.beginPath();
+            ctx.arc(0, 0, size / 2 + 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+            
+            // Main body with gradient
+            const gradient = ctx.createRadialGradient(-5, -5, 0, 0, 0, size / 2);
+            gradient.addColorStop(0, typeDef.color);
+            // Add slight darkening for gradient effect
+            const darkerColor = typeDef.color.replace('#', '');
+            const r = parseInt(darkerColor.substr(0, 2), 16);
+            const g = parseInt(darkerColor.substr(2, 2), 16);
+            const b = parseInt(darkerColor.substr(4, 2), 16);
+            gradient.addColorStop(1, `rgba(${Math.max(0, r-20)}, ${Math.max(0, g-20)}, ${Math.max(0, b-20)}, 0.9)`);
+            
+            ctx.fillStyle = gradient;
             ctx.strokeStyle = '#000';
             ctx.lineWidth = 3;
             ctx.beginPath();
             ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
+            ctx.shadowBlur = 0;
 
             // Spikes
             const spikeLength = 8;
@@ -376,17 +550,30 @@
             ctx.fill();
 
         } else if (typeDef.type === 'caterpillar') {
-            // Orange caterpillar/saw monster
+            // Orange caterpillar/saw monster with glow
             const bodyLength = typeDef.bodyLength || 60;
             
-            // Head (circular)
-            ctx.fillStyle = typeDef.color;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = typeDef.color;
+            
+            // Head (circular) with gradient
+            const headGradient = ctx.createRadialGradient(-3, -3, 0, 0, 0, size / 2);
+            headGradient.addColorStop(0, typeDef.color);
+            // Add slight darkening for gradient effect
+            const darkerColor2 = typeDef.color.replace('#', '');
+            const r2 = parseInt(darkerColor2.substr(0, 2), 16);
+            const g2 = parseInt(darkerColor2.substr(2, 2), 16);
+            const b2 = parseInt(darkerColor2.substr(4, 2), 16);
+            headGradient.addColorStop(1, `rgba(${Math.max(0, r2-20)}, ${Math.max(0, g2-20)}, ${Math.max(0, b2-20)}, 0.9)`);
+            
+            ctx.fillStyle = headGradient;
             ctx.strokeStyle = '#000';
             ctx.lineWidth = 3;
             ctx.beginPath();
             ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
+            ctx.shadowBlur = 0;
 
             // Single large eye
             ctx.fillStyle = typeDef.eyeColor;
@@ -469,15 +656,28 @@
             }
 
         } else if (typeDef.type === 'square') {
-            // Red square spiky monster
+            // Red square spiky monster with glow
             const halfSize = size / 2;
             
-            // Main square body
-            ctx.fillStyle = typeDef.color;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = typeDef.color;
+            
+            // Main square body with gradient
+            const squareGradient = ctx.createLinearGradient(-halfSize, -halfSize, halfSize, halfSize);
+            squareGradient.addColorStop(0, typeDef.color);
+            // Add slight darkening for gradient effect
+            const darkerColor3 = typeDef.color.replace('#', '');
+            const r3 = parseInt(darkerColor3.substr(0, 2), 16);
+            const g3 = parseInt(darkerColor3.substr(2, 2), 16);
+            const b3 = parseInt(darkerColor3.substr(4, 2), 16);
+            squareGradient.addColorStop(1, `rgba(${Math.max(0, r3-20)}, ${Math.max(0, g3-20)}, ${Math.max(0, b3-20)}, 0.9)`);
+            
+            ctx.fillStyle = squareGradient;
             ctx.strokeStyle = '#000';
             ctx.lineWidth = 3;
             ctx.fillRect(-halfSize, -halfSize, size, size);
             ctx.strokeRect(-halfSize, -halfSize, size, size);
+            ctx.shadowBlur = 0;
 
             // Spikes on corners and edges
             const spikeLength = 8;
@@ -558,8 +758,21 @@
         const dy = finger.y - monster.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         const minDistance = (finger.width / 2) + (monster.typeDef.size / 2) + 5; // +5 for spikes
+        const warningDistance = minDistance + 20; // Warning zone
+
+        // Near miss warning
+        if (distance < warningDistance && distance >= minDistance) {
+            if (Math.random() < 0.1) { // Occasional warning
+                playNearMissSound();
+                hapticNearMiss();
+            }
+        }
 
         if (distance < minDistance) {
+            // Create explosion particles
+            createParticles(monster.x, monster.y, monster.typeDef.color, 15);
+            playCollisionSound();
+            hapticCollision();
             return { remove: false, gameOver: true };
         }
 
@@ -585,18 +798,33 @@
         if (scoreTimer >= 1000 / settings.scorePerSecond) { // Score increases every second
             score += 1;
             scoreEl.textContent = score;
+            
+            // Animate score update
+            scoreEl.classList.add('score-update');
+            setTimeout(() => scoreEl.classList.remove('score-update'), 300);
+            
+            // Play score sound and haptic
+            if (score % 5 === 0) { // Every 5 points to avoid too many sounds
+                playScoreSound();
+                hapticScore();
+            }
+            
             scoreTimer = 0;
             
             // Check for milestones (100, 200, 300, etc.)
             if (score > 0 && score % 100 === 0 && score !== lastMilestoneScore) {
                 lastMilestoneScore = score;
                 playMilestoneSound();
+                createParticles(canvas.width / 2, 50, '#FFD700', 20);
             }
             
             // Update level based on score
             const newLevel = getCurrentLevel();
             if (newLevel > level) {
                 level = newLevel;
+                playLevelUpSound();
+                hapticLevelUp();
+                createParticles(canvas.width / 2, canvas.height / 2, '#4ECDC4', 25);
             }
         }
 
@@ -639,6 +867,9 @@
             }
         }
 
+        // Update and draw particles
+        updateParticles();
+
         // Draw finger
         drawFinger();
 
@@ -652,6 +883,7 @@
         scoreTimer = 0;
         lastMilestoneScore = 0;
         monsters.length = 0;
+        particles.length = 0;
         gameRunning = true;
         lastTime = performance.now();
         scoreEl.textContent = '0';
@@ -696,8 +928,18 @@
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
         
+        const oldX = finger.targetX;
+        const oldY = finger.targetY;
+        
         finger.targetX = (targetX - rect.left) * scaleX;
         finger.targetY = (targetY - rect.top) * scaleY;
+        
+        // Play swipe sound occasionally
+        const moved = Math.abs(finger.targetX - oldX) + Math.abs(finger.targetY - oldY);
+        if (moved > 5 && Math.random() < 0.1) {
+            playSwipeSound();
+            hapticSwipe();
+        }
     }
 
     // Event listeners - optimized for mobile
