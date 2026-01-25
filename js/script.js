@@ -25,11 +25,62 @@
     if ('vibrate' in navigator) {
         hapticEnabled = true;
     }
+    
+    // Image assets
+    const images = {
+        hand: new Image(),
+        monster1: new Image(),
+        monster2: new Image(),
+        monster3: new Image(),
+        monster4: new Image()
+    };
+    
+    // Image loading state
+    let imagesLoaded = 0;
+    const totalImages = Object.keys(images).length;
+    
+    // Load all images
+    function loadImages() {
+        return new Promise((resolve) => {
+            let loaded = 0;
+            
+            images.hand.src = '/images/hand.png';
+            images.monster1.src = '/images/moster1-removebg-preview.png';
+            images.monster2.src = '/images/moster2-removebg-preview.png';
+            images.monster3.src = '/images/moster3-removebg-preview.png';
+            images.monster4.src = '/images/moster4-removebg-preview.png';
+            
+            function onImageLoad() {
+                loaded++;
+                if (loaded === totalImages) {
+                    resolve();
+                }
+            }
+            
+            function onImageError() {
+                console.warn('Image failed to load');
+                loaded++;
+                if (loaded === totalImages) {
+                    resolve();
+                }
+            }
+            
+            Object.values(images).forEach(img => {
+                if (img.complete) {
+                    onImageLoad();
+                } else {
+                    img.onload = onImageLoad;
+                    img.onerror = onImageError;
+                }
+            });
+        });
+    }
 
-    // Set canvas size
+    // Set canvas size - larger and centered
     function resizeCanvas() {
-        const maxWidth = Math.min(window.innerWidth - 40, 500);
-        const maxHeight = Math.min(window.innerHeight - 100, 700);
+        // Use more of the screen space for larger canvas
+        const maxWidth = Math.min(window.innerWidth - 20, 600);
+        const maxHeight = Math.min(window.innerHeight - 40, 800);
         canvas.width = maxWidth;
         canvas.height = maxHeight;
     }
@@ -257,72 +308,50 @@
     const finger = {
         x: 0,
         y: 0,
-        width: 40,
-        height: 60,
+        width: 45,  // Will be updated based on image
+        height: 60, // Will be updated based on image
         targetX: 0,
         targetY: 0,
-        trail: [] // Path trail
+        trail: [], // Path trail
+        imageWidth: 45,
+        imageHeight: 60
     };
 
     // Monsters (obstacles)
     const monsters = [];
     
-    // Different monster types for different levels
+    // Different monster types - cycles every 50 score
     const monsterTypeDefinitions = {
-        // Level 1: Green circular spiky monsters
-        level1: [
+        // Monster 1
+        monster1: [
             { 
-                type: 'circular', 
-                color: '#4ECDC4', 
-                eyeColor: '#FFD93D', 
-                size: 35,
-                spikes: 8
+                type: 'monster1', 
+                image: images.monster1,
+                size: 75
             }
         ],
-        // Level 2: Orange caterpillar/saw monsters
-        level2: [
+        // Monster 2
+        monster2: [
             { 
-                type: 'caterpillar', 
-                color: '#FF6B35', 
-                eyeColor: '#FFD93D', 
-                size: 40,
-                bodyLength: 60,
-                spikes: 12
+                type: 'monster2', 
+                image: images.monster2,
+                size: 75
             }
         ],
-        // Level 3: Red square spiky monsters
-        level3: [
+        // Monster 3
+        monster3: [
             { 
-                type: 'square', 
-                color: '#FF6B6B', 
-                eyeColor: '#FFD93D', 
-                size: 35,
-                spikes: 8
+                type: 'monster3', 
+                image: images.monster3,
+                size: 75
             }
         ],
-        // Level 4+: Mix of all types
-        level4: [
+        // Monster 4
+        monster4: [
             { 
-                type: 'circular', 
-                color: '#4ECDC4', 
-                eyeColor: '#FFD93D', 
-                size: 35,
-                spikes: 8
-            },
-            { 
-                type: 'caterpillar', 
-                color: '#FF6B35', 
-                eyeColor: '#FFD93D', 
-                size: 40,
-                bodyLength: 60,
-                spikes: 12
-            },
-            { 
-                type: 'square', 
-                color: '#FF6B6B', 
-                eyeColor: '#FFD93D', 
-                size: 35,
-                spikes: 8
+                type: 'monster4', 
+                image: images.monster4,
+                size: 75
             }
         ]
     };
@@ -342,12 +371,16 @@
         return Math.floor(score / settings.levelUpScore) + 1;
     }
 
-    // Get available monster types for current level
+    // Get available monster types - changes every 50 score
     function getMonsterTypesForLevel() {
-        if (level === 1) return monsterTypeDefinitions.level1;
-        if (level === 2) return monsterTypeDefinitions.level2;
-        if (level === 3) return monsterTypeDefinitions.level3;
-        return monsterTypeDefinitions.level4; // Level 4+
+        // Calculate which monster cycle we're in (every 50 points)
+        const monsterCycle = Math.floor(score / 50) % 4;
+        
+        // Cycle through monsters: 0=monster1, 1=monster2, 2=monster3, 3=monster4
+        if (monsterCycle === 0) return monsterTypeDefinitions.monster1; // 0-49: monster1
+        if (monsterCycle === 1) return monsterTypeDefinitions.monster2; // 50-99: monster2
+        if (monsterCycle === 2) return monsterTypeDefinitions.monster3; // 100-149: monster3
+        return monsterTypeDefinitions.monster4; // 150-199: monster4, then cycles back
     }
 
     // Initialize finger position
@@ -357,56 +390,46 @@
         finger.targetX = finger.x;
         finger.targetY = finger.y;
         finger.trail = [];
+        
+        // Update finger dimensions based on image if loaded
+        if (images.hand.complete && images.hand.width > 0) {
+            // Scale hand image to reasonable size (smaller)
+            const scale = 0.3; // Scale factor - reduced for smaller hand
+            finger.imageWidth = images.hand.width * scale;
+            finger.imageHeight = images.hand.height * scale;
+            finger.width = finger.imageWidth;
+            finger.height = finger.imageHeight;
+        }
     }
 
-    // Draw finger with enhanced visuals
+    // Draw hand using image
     function drawFinger() {
+        if (!images.hand.complete || images.hand.width === 0) return;
+        
         const x = finger.x;
         const y = finger.y;
-
-        // Outer glow
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
         
-        // Shadow with blur
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-        ctx.beginPath();
-        ctx.ellipse(x, y + finger.height / 2 + 5, finger.width / 2, 8, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Finger body (skin tone) with gradient
-        const gradient = ctx.createRadialGradient(x - 5, y - 10, 0, x, y, finger.height / 2);
-        gradient.addColorStop(0, '#FFE5CC');
-        gradient.addColorStop(1, '#FFDBAC');
+        // Draw shadow
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 8;
         
-        ctx.fillStyle = gradient;
-        ctx.strokeStyle = '#E8C5A0';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.ellipse(x, y, finger.width / 2, finger.height / 2, -0.3, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-
-        // Fingernail with shine
-        ctx.fillStyle = '#FFE5CC';
-        ctx.beginPath();
-        ctx.ellipse(x - 5, y - finger.height / 2 + 8, 12, 8, -0.3, 0, Math.PI * 2);
-        ctx.fill();
+        // Draw hand image
+        const drawWidth = finger.imageWidth;
+        const drawHeight = finger.imageHeight;
         
-        // Nail highlight
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-        ctx.beginPath();
-        ctx.ellipse(x - 7, y - finger.height / 2 + 6, 4, 3, -0.3, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Finger tip highlight
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-        ctx.beginPath();
-        ctx.ellipse(x - 8, y - finger.height / 2 + 5, 6, 4, -0.3, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.drawImage(
+            images.hand,
+            x - drawWidth / 2,
+            y - drawHeight / 2,
+            drawWidth,
+            drawHeight
+        );
         
         // Reset shadow
         ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = 0;
     }
 
     // Draw enhanced trail with glow effect
@@ -478,272 +501,38 @@
         }
     }
 
-    // Draw monster
+    // Draw monster using image
     function drawMonster(monster) {
+        const typeDef = monster.typeDef;
+        const monsterImage = typeDef.image;
+        
+        // Check if image is loaded
+        if (!monsterImage || !monsterImage.complete || monsterImage.width === 0) {
+            return;
+        }
+        
         ctx.save();
         ctx.translate(monster.x, monster.y);
         ctx.rotate(monster.rotation);
-
-        const typeDef = monster.typeDef;
+        
+        // Add glow effect
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.3)';
+        
         const size = typeDef.size;
-
-        if (typeDef.type === 'circular') {
-            // Green circular spiky monster with glow
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = typeDef.color;
-            
-            // Outer glow
-            ctx.fillStyle = typeDef.color;
-            ctx.globalAlpha = 0.3;
-            ctx.beginPath();
-            ctx.arc(0, 0, size / 2 + 3, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.globalAlpha = 1.0;
-            
-            // Main body with gradient
-            const gradient = ctx.createRadialGradient(-5, -5, 0, 0, 0, size / 2);
-            gradient.addColorStop(0, typeDef.color);
-            // Add slight darkening for gradient effect
-            const darkerColor = typeDef.color.replace('#', '');
-            const r = parseInt(darkerColor.substr(0, 2), 16);
-            const g = parseInt(darkerColor.substr(2, 2), 16);
-            const b = parseInt(darkerColor.substr(4, 2), 16);
-            gradient.addColorStop(1, `rgba(${Math.max(0, r-20)}, ${Math.max(0, g-20)}, ${Math.max(0, b-20)}, 0.9)`);
-            
-            ctx.fillStyle = gradient;
-            ctx.strokeStyle = '#000';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-            ctx.shadowBlur = 0;
-
-            // Spikes
-            const spikeLength = 8;
-            const spikeCount = typeDef.spikes;
-            for (let i = 0; i < spikeCount; i++) {
-                const angle = (i / spikeCount) * Math.PI * 2;
-                const spikeX = Math.cos(angle) * (size / 2);
-                const spikeY = Math.sin(angle) * (size / 2);
-                const spikeEndX = Math.cos(angle) * (size / 2 + spikeLength);
-                const spikeEndY = Math.sin(angle) * (size / 2 + spikeLength);
-                
-                ctx.beginPath();
-                ctx.moveTo(spikeX, spikeY);
-                ctx.lineTo(spikeEndX, spikeEndY);
-                ctx.lineWidth = 3;
-                ctx.stroke();
-            }
-
-            // Two eyes
-            ctx.fillStyle = typeDef.eyeColor;
-            ctx.beginPath();
-            ctx.arc(-8, -8, 6, 0, Math.PI * 2);
-            ctx.arc(8, -8, 6, 0, Math.PI * 2);
-            ctx.fill();
-            
-            ctx.fillStyle = '#000';
-            ctx.beginPath();
-            ctx.arc(-8, -8, 3, 0, Math.PI * 2);
-            ctx.arc(8, -8, 3, 0, Math.PI * 2);
-            ctx.fill();
-
-        } else if (typeDef.type === 'caterpillar') {
-            // Orange caterpillar/saw monster with glow
-            const bodyLength = typeDef.bodyLength || 60;
-            
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = typeDef.color;
-            
-            // Head (circular) with gradient
-            const headGradient = ctx.createRadialGradient(-3, -3, 0, 0, 0, size / 2);
-            headGradient.addColorStop(0, typeDef.color);
-            // Add slight darkening for gradient effect
-            const darkerColor2 = typeDef.color.replace('#', '');
-            const r2 = parseInt(darkerColor2.substr(0, 2), 16);
-            const g2 = parseInt(darkerColor2.substr(2, 2), 16);
-            const b2 = parseInt(darkerColor2.substr(4, 2), 16);
-            headGradient.addColorStop(1, `rgba(${Math.max(0, r2-20)}, ${Math.max(0, g2-20)}, ${Math.max(0, b2-20)}, 0.9)`);
-            
-            ctx.fillStyle = headGradient;
-            ctx.strokeStyle = '#000';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-            ctx.shadowBlur = 0;
-
-            // Single large eye
-            ctx.fillStyle = typeDef.eyeColor;
-            ctx.beginPath();
-            ctx.arc(0, -5, 12, 0, Math.PI * 2);
-            ctx.fill();
-            
-            ctx.fillStyle = '#8B4513';
-            ctx.beginPath();
-            ctx.arc(0, -5, 8, 0, Math.PI * 2);
-            ctx.fill();
-            
-            ctx.fillStyle = '#000';
-            ctx.beginPath();
-            ctx.arc(0, -5, 4, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Eyebrow
-            ctx.strokeStyle = '#000';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.moveTo(-10, -12);
-            ctx.lineTo(10, -12);
-            ctx.stroke();
-
-            // Fangs
-            ctx.fillStyle = '#FFF';
-            ctx.strokeStyle = '#000';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(-4, 8);
-            ctx.lineTo(-2, 15);
-            ctx.lineTo(-6, 15);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.moveTo(4, 8);
-            ctx.lineTo(2, 15);
-            ctx.lineTo(6, 15);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-
-            // Elongated body with spikes (saw-like)
-            ctx.fillStyle = typeDef.color;
-            ctx.strokeStyle = '#000';
-            ctx.lineWidth = 2;
-            const bodyY = size / 2;
-            const spikeLength = 6;
-            const spikeCount = typeDef.spikes;
-            
-            // Draw body rectangle
-            ctx.fillRect(-bodyLength / 2, bodyY, bodyLength, size / 3);
-            ctx.strokeRect(-bodyLength / 2, bodyY, bodyLength, size / 3);
-
-            // Spikes on top and bottom of body
-            for (let i = 0; i < spikeCount; i++) {
-                const t = i / (spikeCount - 1);
-                const x = -bodyLength / 2 + t * bodyLength;
-                
-                // Top spikes
-                ctx.beginPath();
-                ctx.moveTo(x, bodyY);
-                ctx.lineTo(x - 3, bodyY - spikeLength);
-                ctx.lineTo(x + 3, bodyY - spikeLength);
-                ctx.closePath();
-                ctx.fill();
-                ctx.stroke();
-                
-                // Bottom spikes
-                ctx.beginPath();
-                ctx.moveTo(x, bodyY + size / 3);
-                ctx.lineTo(x - 3, bodyY + size / 3 + spikeLength);
-                ctx.lineTo(x + 3, bodyY + size / 3 + spikeLength);
-                ctx.closePath();
-                ctx.fill();
-                ctx.stroke();
-            }
-
-        } else if (typeDef.type === 'square') {
-            // Red square spiky monster with glow
-            const halfSize = size / 2;
-            
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = typeDef.color;
-            
-            // Main square body with gradient
-            const squareGradient = ctx.createLinearGradient(-halfSize, -halfSize, halfSize, halfSize);
-            squareGradient.addColorStop(0, typeDef.color);
-            // Add slight darkening for gradient effect
-            const darkerColor3 = typeDef.color.replace('#', '');
-            const r3 = parseInt(darkerColor3.substr(0, 2), 16);
-            const g3 = parseInt(darkerColor3.substr(2, 2), 16);
-            const b3 = parseInt(darkerColor3.substr(4, 2), 16);
-            squareGradient.addColorStop(1, `rgba(${Math.max(0, r3-20)}, ${Math.max(0, g3-20)}, ${Math.max(0, b3-20)}, 0.9)`);
-            
-            ctx.fillStyle = squareGradient;
-            ctx.strokeStyle = '#000';
-            ctx.lineWidth = 3;
-            ctx.fillRect(-halfSize, -halfSize, size, size);
-            ctx.strokeRect(-halfSize, -halfSize, size, size);
-            ctx.shadowBlur = 0;
-
-            // Spikes on corners and edges
-            const spikeLength = 8;
-            const positions = [
-                { x: -halfSize, y: -halfSize, angle: -Math.PI * 0.75 }, // Top-left
-                { x: halfSize, y: -halfSize, angle: -Math.PI * 0.25 }, // Top-right
-                { x: -halfSize, y: halfSize, angle: Math.PI * 0.75 }, // Bottom-left
-                { x: halfSize, y: halfSize, angle: Math.PI * 0.25 }, // Bottom-right
-                { x: 0, y: -halfSize, angle: -Math.PI / 2 }, // Top
-                { x: 0, y: halfSize, angle: Math.PI / 2 }, // Bottom
-                { x: -halfSize, y: 0, angle: Math.PI }, // Left
-                { x: halfSize, y: 0, angle: 0 } // Right
-            ];
-
-            for (let pos of positions) {
-                const spikeX = pos.x + Math.cos(pos.angle) * spikeLength;
-                const spikeY = pos.y + Math.sin(pos.angle) * spikeLength;
-                ctx.beginPath();
-                ctx.moveTo(pos.x, pos.y);
-                ctx.lineTo(spikeX, spikeY);
-                ctx.lineWidth = 3;
-                ctx.stroke();
-            }
-
-            // Two eyes
-            ctx.fillStyle = typeDef.eyeColor;
-            ctx.beginPath();
-            ctx.arc(-8, -8, 6, 0, Math.PI * 2);
-            ctx.arc(8, -8, 6, 0, Math.PI * 2);
-            ctx.fill();
-            
-            ctx.fillStyle = '#000';
-            ctx.beginPath();
-            ctx.arc(-8, -8, 3, 0, Math.PI * 2);
-            ctx.arc(8, -8, 3, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Eyebrows
-            ctx.strokeStyle = '#000';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(-12, -12);
-            ctx.lineTo(-4, -12);
-            ctx.moveTo(4, -12);
-            ctx.lineTo(12, -12);
-            ctx.stroke();
-
-            // Small horns
-            ctx.fillStyle = '#FFF';
-            ctx.beginPath();
-            ctx.moveTo(-halfSize + 5, -halfSize);
-            ctx.lineTo(-halfSize + 2, -halfSize - 5);
-            ctx.lineTo(-halfSize + 8, -halfSize - 5);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.moveTo(halfSize - 5, -halfSize);
-            ctx.lineTo(halfSize - 2, -halfSize - 5);
-            ctx.lineTo(halfSize - 8, -halfSize - 5);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-        }
-
+        const drawWidth = size;
+        const drawHeight = (monsterImage.height / monsterImage.width) * size;
+        
+        // Draw monster image
+        ctx.drawImage(
+            monsterImage,
+            -drawWidth / 2,
+            -drawHeight / 2,
+            drawWidth,
+            drawHeight
+        );
+        
+        ctx.shadowBlur = 0;
         ctx.restore();
     }
 
@@ -753,11 +542,13 @@
         monster.y += monster.vy;
         monster.rotation += monster.rotationSpeed;
 
-        // Check collision with finger
+        // Check collision with finger (using image dimensions)
         const dx = finger.x - monster.x;
         const dy = finger.y - monster.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
-        const minDistance = (finger.width / 2) + (monster.typeDef.size / 2) + 5; // +5 for spikes
+        const fingerRadius = Math.max(finger.imageWidth || finger.width, finger.imageHeight || finger.height) / 2;
+        const monsterRadius = monster.typeDef.size / 2;
+        const minDistance = fingerRadius + monsterRadius;
         const warningDistance = minDistance + 20; // Warning zone
 
         // Near miss warning
@@ -769,8 +560,8 @@
         }
 
         if (distance < minDistance) {
-            // Create explosion particles
-            createParticles(monster.x, monster.y, monster.typeDef.color, 15);
+            // Create explosion particles (use orange color as default)
+            createParticles(monster.x, monster.y, '#FF6B35', 15);
             playCollisionSound();
             hapticCollision();
             return { remove: false, gameOver: true };
@@ -1000,30 +791,34 @@
     // Initialize
     loadHighScore();
     initAudio();
-    initFinger();
     
-    // Start game on first load (or wait for user interaction for audio)
-    // Audio requires user interaction, so we'll start game after first user interaction
-    let gameStarted = false;
-    function startGameOnInteraction() {
-        if (!gameStarted) {
-            gameStarted = true;
-            if (audioContext && audioContext.state === 'suspended') {
-                audioContext.resume();
+    // Load images and then initialize
+    loadImages().then(() => {
+        initFinger();
+        
+        // Start game on first load (or wait for user interaction for audio)
+        // Audio requires user interaction, so we'll start game after first user interaction
+        let gameStarted = false;
+        function startGameOnInteraction() {
+            if (!gameStarted) {
+                gameStarted = true;
+                if (audioContext && audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+                startGame();
             }
-            startGame();
         }
-    }
-    
-    // Start game on any user interaction (for audio)
-    canvas.addEventListener('touchstart', startGameOnInteraction, { once: true });
-    canvas.addEventListener('mousedown', startGameOnInteraction, { once: true });
-    
-    // Also start immediately if audio is not needed
-    setTimeout(() => {
-        if (!gameStarted) {
-            startGame();
-            gameStarted = true;
-        }
-    }, 100);
+        
+        // Start game on any user interaction (for audio)
+        canvas.addEventListener('touchstart', startGameOnInteraction, { once: true });
+        canvas.addEventListener('mousedown', startGameOnInteraction, { once: true });
+        
+        // Also start immediately if audio is not needed
+        setTimeout(() => {
+            if (!gameStarted) {
+                startGame();
+                gameStarted = true;
+            }
+        }, 100);
+    });
 })();
