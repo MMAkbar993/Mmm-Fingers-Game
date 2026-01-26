@@ -11,6 +11,9 @@
     const highScoreEl = document.getElementById('highScore');
     const highScoreDisplayEl = document.getElementById('highScoreDisplay');
     const newRecordEl = document.getElementById('newRecord');
+    const startScreenEl = document.getElementById('startScreen');
+    const startBtn = document.getElementById('startBtn');
+    const startHighScoreEl = document.getElementById('startHighScore');
     
     // Audio context for sound generation
     let audioContext = null;
@@ -78,11 +81,9 @@
 
     // Set canvas size - larger and centered
     function resizeCanvas() {
-        // Use more of the screen space for larger canvas
-        const maxWidth = Math.min(window.innerWidth - 20, 600);
-        const maxHeight = Math.min(window.innerHeight - 40, 800);
-        canvas.width = maxWidth;
-        canvas.height = maxHeight;
+        // Full screen canvas
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
     }
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
@@ -107,6 +108,9 @@
             if (highScoreDisplayEl) {
                 highScoreDisplayEl.textContent = `Best Score: ${highScore}`;
             }
+            if (startHighScoreEl) {
+                startHighScoreEl.textContent = highScore;
+            }
         }
     }
     
@@ -120,6 +124,9 @@
             }
             if (highScoreDisplayEl) {
                 highScoreDisplayEl.textContent = `Best Score: ${highScore}`;
+            }
+            if (startHighScoreEl) {
+                startHighScoreEl.textContent = highScore;
             }
             return true; // New record
         }
@@ -335,7 +342,7 @@
             { 
                 type: 'monster2', 
                 image: images.monster2,
-                size: 75
+                size: 100
             }
         ],
         // Monster 3
@@ -343,7 +350,7 @@
             { 
                 type: 'monster3', 
                 image: images.monster3,
-                size: 75
+                size: 140
             }
         ],
         // Monster 4
@@ -351,7 +358,7 @@
             { 
                 type: 'monster4', 
                 image: images.monster4,
-                size: 75
+                size: 120
             }
         ]
     };
@@ -359,11 +366,11 @@
     // Game settings
     const settings = {
         monsterSpawnRate: 0.05, // Increased from 0.015 - more monsters spawn
-        monsterSpeed: 3.5, // Increased from 1.5 - monsters move faster
+        monsterSpeed: 8.0, // Increased base speed for faster enemy movement
         trailLength: 15,
         scoreRate: 0.1, // Score per frame
         scorePerSecond: 2, // Score increases 2 times per second
-        levelUpScore: 50 // Score needed to level up
+        levelUpScore: 50 // Score needed to level up - speed increases every 50 score
     };
 
     // Get current level based on score
@@ -487,7 +494,8 @@
             
             // Move downward only (slight horizontal variation for visual interest)
             const vx = (Math.random() - 0.5) * 0.3; // Small horizontal drift
-            const vy = settings.monsterSpeed * (1 + (level - 1) * 0.4) + Math.random() * 0.8; // Faster downward movement with more aggressive level scaling
+            // Speed increases every 50 score (each level) - more aggressive scaling
+            const vy = settings.monsterSpeed * (1 + (level - 1) * 0.6) + Math.random() * 0.8; // Faster downward movement with aggressive level scaling
 
             monsters.push({
                 x: x,
@@ -542,11 +550,12 @@
         monster.y += monster.vy;
         monster.rotation += monster.rotationSpeed;
 
-        // Check collision with finger (using image dimensions)
+        // Check collision with finger (using smaller, more accurate hitbox)
         const dx = finger.x - monster.x;
         const dy = finger.y - monster.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
-        const fingerRadius = Math.max(finger.imageWidth || finger.width, finger.imageHeight || finger.height) / 2;
+        // Use smaller collision radius - only the finger tip area, not the full hand image
+        const fingerRadius = Math.min(finger.imageWidth || finger.width, finger.imageHeight || finger.height) * 0.25; // 25% of smaller dimension
         const monsterRadius = monster.typeDef.size / 2;
         const minDistance = fingerRadius + monsterRadius;
         const warningDistance = minDistance + 20; // Warning zone
@@ -680,6 +689,7 @@
         scoreEl.textContent = '0';
         gameOverEl.style.display = 'none';
         newRecordEl.style.display = 'none';
+        if (startScreenEl) startScreenEl.style.display = 'none';
         initFinger();
         
         // Start background music
@@ -792,33 +802,42 @@
     loadHighScore();
     initAudio();
     
+    // Update start screen high score
+    if (startHighScoreEl) {
+        startHighScoreEl.textContent = highScore;
+    }
+    
     // Load images and then initialize
     loadImages().then(() => {
         initFinger();
         
-        // Start game on first load (or wait for user interaction for audio)
-        // Audio requires user interaction, so we'll start game after first user interaction
-        let gameStarted = false;
-        function startGameOnInteraction() {
-            if (!gameStarted) {
-                gameStarted = true;
-                if (audioContext && audioContext.state === 'suspended') {
-                    audioContext.resume();
-                }
-                startGame();
+        // Show start screen initially
+        if (startScreenEl) {
+            startScreenEl.style.display = 'flex';
+        }
+        
+        // Start game function
+        function beginGame() {
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            startGame();
+        }
+        
+        // Start game on button click
+        if (startBtn) {
+            startBtn.addEventListener('click', beginGame);
+        }
+        
+        // Start game on canvas tap
+        function startGameOnInteraction(e) {
+            if (startScreenEl && startScreenEl.style.display !== 'none') {
+                e.preventDefault();
+                beginGame();
             }
         }
         
-        // Start game on any user interaction (for audio)
-        canvas.addEventListener('touchstart', startGameOnInteraction, { once: true });
-        canvas.addEventListener('mousedown', startGameOnInteraction, { once: true });
-        
-        // Also start immediately if audio is not needed
-        setTimeout(() => {
-            if (!gameStarted) {
-                startGame();
-                gameStarted = true;
-            }
-        }, 100);
+        canvas.addEventListener('touchstart', startGameOnInteraction, { once: false });
+        canvas.addEventListener('mousedown', startGameOnInteraction, { once: false });
     });
 })();
