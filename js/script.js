@@ -8,18 +8,31 @@
     const gameOverEl = document.getElementById('gameOver');
     const finalScoreEl = document.getElementById('finalScore');
     const restartBtn = document.getElementById('restartBtn');
-    const highScoreEl = document.getElementById('highScore');
-    const highScoreDisplayEl = document.getElementById('highScoreDisplay');
     const newRecordEl = document.getElementById('newRecord');
     const startScreenEl = document.getElementById('startScreen');
-    const startBtn = document.getElementById('startBtn');
-    const startHighScoreEl = document.getElementById('startHighScore');
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsModal = document.getElementById('settingsModal');
+    const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+    const musicToggle = document.getElementById('musicToggle');
+    const fxToggle = document.getElementById('fxToggle');
+    const hapticsToggle = document.getElementById('hapticsToggle');
+    const soundToggleBtn = document.getElementById('soundToggleBtn');
+    const achievementsBtn = document.getElementById('achievementsBtn');
+    const moreGamesBtn = document.getElementById('moreGamesBtn');
+    const bestScoreDisplay = document.getElementById('bestScoreDisplay');
+    
     
     // Audio context for sound generation
     let audioContext = null;
     let backgroundMusicPlaying = false;
-    let backgroundMusicOscillators = [];
+    let backgroundMusicNodes = [];
+    let backgroundMusicInterval = null;
+    let startScreenMusicPlaying = false;
+    let startScreenMusicNodes = [];
     let lastMilestoneScore = 0;
+    let masterGainNode = null;
+    let musicGainNode = null;
+    let fxGainNode = null;
     
     // Particle system for visual effects
     const particles = [];
@@ -28,11 +41,8 @@
     const backgroundParticles = [];
     let backgroundAnimationTime = 0;
     
-    // Haptic feedback support
-    let hapticEnabled = false;
-    if ('vibrate' in navigator) {
-        hapticEnabled = true;
-    }
+    // Detect mobile device
+    const isMobile = window.matchMedia('(pointer: coarse)').matches;
     
     // Image assets
     const images = {
@@ -84,11 +94,29 @@
         });
     }
 
-    // Set canvas size - larger and centered
+    // Set canvas size - fill 100% viewport
     function resizeCanvas() {
-        // Full screen canvas
+        // Full screen canvas - fill viewport
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
+        
+        // Update UI positioning for safe areas
+        const safeAreaTop = isMobile ? 120 : 45;
+        
+        const ui = document.getElementById('ui');
+        if (ui) {
+            ui.style.top = `${safeAreaTop}px`;
+        }
+        
+        // Update corner buttons positioning
+        const topLeftButtons = document.querySelector('.top-left-buttons');
+        const topRightButtons = document.querySelector('.top-right-buttons');
+        if (topLeftButtons) {
+            topLeftButtons.style.top = `${safeAreaTop}px`;
+        }
+        if (topRightButtons) {
+            topRightButtons.style.top = `${safeAreaTop}px`;
+        }
     }
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
@@ -100,171 +128,399 @@
     let animationId = null;
     let lastTime = 0;
     let scoreTimer = 0;
-    let highScore = 0;
     
-    // Load high score from localStorage
-    function loadHighScore() {
-        const saved = localStorage.getItem('mmmFingersHighScore');
+    // Settings state (persisted to localStorage)
+    const settings = {
+        music: true,
+        fx: true,
+        haptics: true
+    };
+    
+    // Best score state (persisted to localStorage)
+    let bestScore = 0;
+    
+    // Load settings from localStorage
+    function loadSettings() {
+        const saved = localStorage.getItem('mmmFingersSettings');
         if (saved) {
-            highScore = parseInt(saved, 10);
-            if (highScoreEl) {
-                highScoreEl.textContent = `Best: ${highScore}`;
+            try {
+                const parsed = JSON.parse(saved);
+                settings.music = parsed.music !== false;
+                settings.fx = parsed.fx !== false;
+                settings.haptics = parsed.haptics !== false;
+            } catch (e) {
+                console.warn('Failed to parse settings');
             }
-            if (highScoreDisplayEl) {
-                highScoreDisplayEl.textContent = `Best Score: ${highScore}`;
+        }
+        // Update UI
+        if (musicToggle) musicToggle.checked = settings.music;
+        if (fxToggle) fxToggle.checked = settings.fx;
+        if (hapticsToggle) hapticsToggle.checked = settings.haptics;
+    }
+    
+    // Save settings to localStorage
+    function saveSettings() {
+        localStorage.setItem('mmmFingersSettings', JSON.stringify(settings));
+    }
+    
+    // Load best score from localStorage
+    function loadBestScore() {
+        const saved = localStorage.getItem('mmmFingersBestScore');
+        if (saved) {
+            try {
+                bestScore = parseInt(saved, 10) || 0;
+            } catch (e) {
+                console.warn('Failed to parse best score');
+                bestScore = 0;
             }
-            if (startHighScoreEl) {
-                startHighScoreEl.textContent = highScore;
+        }
+        
+        // Also check platform for best score
+        if (typeof (window).getBestScore === "function") {
+            try {
+                const platformBest = (window).getBestScore();
+                if (platformBest !== undefined && platformBest !== null) {
+                    const platformScore = parseInt(platformBest, 10) || 0;
+                    if (platformScore > bestScore) {
+                        bestScore = platformScore;
+                    }
+                }
+            } catch (e) {
+                // Platform function not available
             }
+        }
+        
+        // Update display
+        if (bestScoreDisplay) {
+            bestScoreDisplay.textContent = bestScore.toString();
         }
     }
     
-    // Save high score to localStorage
-    function saveHighScore(newScore) {
-        if (newScore > highScore) {
-            highScore = newScore;
-            localStorage.setItem('mmmFingersHighScore', highScore.toString());
-            if (highScoreEl) {
-                highScoreEl.textContent = `Best: ${highScore}`;
-            }
-            if (highScoreDisplayEl) {
-                highScoreDisplayEl.textContent = `Best Score: ${highScore}`;
-            }
-            if (startHighScoreEl) {
-                startHighScoreEl.textContent = highScore;
+    // Save best score to localStorage
+    function saveBestScore(newScore) {
+        if (newScore > bestScore) {
+            bestScore = newScore;
+            localStorage.setItem('mmmFingersBestScore', bestScore.toString());
+            if (bestScoreDisplay) {
+                bestScoreDisplay.textContent = bestScore.toString();
             }
             return true; // New record
         }
         return false; // No new record
     }
     
-    // Initialize audio context
+    // Initialize audio context with gain nodes for volume control
     function initAudio() {
         try {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Create master gain node
+            masterGainNode = audioContext.createGain();
+            masterGainNode.connect(audioContext.destination);
+            masterGainNode.gain.value = 1.0;
+            
+            // Create separate gain nodes for music and FX
+            musicGainNode = audioContext.createGain();
+            musicGainNode.connect(masterGainNode);
+            musicGainNode.gain.value = 0.4; // Background music volume
+            
+            fxGainNode = audioContext.createGain();
+            fxGainNode.connect(masterGainNode);
+            fxGainNode.gain.value = 0.6; // Sound effects volume
         } catch (e) {
             console.log('Audio not supported');
         }
     }
     
-    // Generate and play a tone
-    function playTone(frequency, duration, type = 'sine', volume = 0.3) {
-        if (!audioContext) return;
+    // Create a more sophisticated tone with envelope and optional filter
+    function createTone(frequency, duration, options = {}) {
+        if (!audioContext || !settings.fx) return null;
         
+        const {
+            type = 'sine',
+            volume = 0.3,
+            attack = 0.01,
+            decay = 0.1,
+            sustain = 0.7,
+            release = 0.2,
+            detune = 0,
+            filterFreq = null,
+            filterQ = 1
+        } = options;
+        
+        const now = audioContext.currentTime;
         const oscillator = audioContext.createOscillator();
         const gainNode = audioContext.createGain();
+        let filter = null;
         
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
+        if (filterFreq) {
+            filter = audioContext.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.value = filterFreq;
+            filter.Q.value = filterQ;
+            oscillator.connect(filter);
+            filter.connect(gainNode);
+        } else {
+            oscillator.connect(gainNode);
+        }
+        
+        gainNode.connect(fxGainNode);
         
         oscillator.frequency.value = frequency;
         oscillator.type = type;
+        oscillator.detune.value = detune;
         
-        gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+        // ADSR envelope
+        gainNode.gain.setValueAtTime(0, now);
+        gainNode.gain.linearRampToValueAtTime(volume, now + attack);
+        gainNode.gain.linearRampToValueAtTime(volume * sustain, now + attack + decay);
+        gainNode.gain.setValueAtTime(volume * sustain, now + duration - release);
+        gainNode.gain.linearRampToValueAtTime(0, now + duration);
         
-        oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + duration);
+        oscillator.start(now);
+        oscillator.stop(now + duration);
+        
+        return { oscillator, gainNode, filter };
     }
     
-    // Enhanced SFX system
+    // Enhanced SFX system with better sound design
     function playSwipeSound() {
-        // Soft whoosh sound for swiping
-        playTone(200, 0.05, 'sine', 0.15);
-        playTone(300, 0.05, 'sine', 0.1);
+        // Smooth whoosh with frequency sweep
+        const baseFreq = 150;
+        const sweepDuration = 0.08;
+        const steps = 5;
+        
+        for (let i = 0; i < steps; i++) {
+            const delay = (i / steps) * sweepDuration;
+            const freq = baseFreq + (i * 50);
+            createTone(freq, 0.06, {
+                type: 'sine',
+                volume: 0.12 * (1 - i / steps),
+                attack: 0.005,
+                release: 0.04
+            });
+        }
     }
     
     function playScoreSound() {
-        // Pleasant tick sound for score increase
-        playTone(600, 0.08, 'sine', 0.2);
+        // Pleasant, crisp tick with harmonic
+        createTone(800, 0.1, {
+            type: 'sine',
+            volume: 0.25,
+            attack: 0.01,
+            decay: 0.05,
+            release: 0.04
+        });
+        // Add harmonic
+        setTimeout(() => {
+            createTone(1200, 0.08, {
+                type: 'sine',
+                volume: 0.15,
+                attack: 0.01,
+                release: 0.07
+            });
+        }, 20);
     }
     
     function playCollisionSound() {
-        // More dramatic and impactful sound for collision
-        playTone(80, 0.3, 'sawtooth', 0.6);
-        playTone(60, 0.3, 'sawtooth', 0.5);
-        setTimeout(() => playTone(100, 0.2, 'sawtooth', 0.4), 100);
-        setTimeout(() => playTone(120, 0.15, 'sawtooth', 0.3), 200);
+        // Powerful, dramatic impact with multiple layers
+        const now = audioContext.currentTime;
+        
+        // Low impact layer
+        createTone(80, 0.4, {
+            type: 'sawtooth',
+            volume: 0.5,
+            attack: 0.01,
+            decay: 0.15,
+            sustain: 0.3,
+            release: 0.24,
+            filterFreq: 200
+        });
+        
+        // Mid impact layer
+        createTone(120, 0.35, {
+            type: 'square',
+            volume: 0.4,
+            attack: 0.01,
+            decay: 0.1,
+            sustain: 0.2,
+            release: 0.24,
+            filterFreq: 300
+        });
+        
+        // High impact layer
+        setTimeout(() => {
+            createTone(200, 0.25, {
+                type: 'sawtooth',
+                volume: 0.3,
+                attack: 0.01,
+                decay: 0.08,
+                release: 0.16,
+                filterFreq: 500
+            });
+        }, 50);
+        
+        // Rumble layer
+        setTimeout(() => {
+            createTone(60, 0.3, {
+                type: 'sawtooth',
+                volume: 0.35,
+                attack: 0.02,
+                decay: 0.1,
+                release: 0.18,
+                filterFreq: 150
+            });
+        }, 100);
     }
     
     function playGameOverSound() {
-        // Dramatic descending game over sound - more impactful and emotional
-        if (!audioContext) return;
+        // Emotional, dramatic descending sequence
+        if (!audioContext || !settings.fx) return;
         
-        // Low dramatic impact
-        playTone(150, 0.4, 'sawtooth', 0.7);
-        playTone(120, 0.4, 'sawtooth', 0.6);
+        // Initial impact
+        createTone(150, 0.3, {
+            type: 'sawtooth',
+            volume: 0.6,
+            attack: 0.01,
+            decay: 0.15,
+            release: 0.14,
+            filterFreq: 250
+        });
         
-        // Descending tones for dramatic effect
-        setTimeout(() => {
-            playTone(100, 0.3, 'sawtooth', 0.5);
-            playTone(80, 0.3, 'sawtooth', 0.4);
-        }, 200);
+        // Descending sequence
+        const notes = [120, 100, 85, 70, 60];
+        notes.forEach((freq, i) => {
+            setTimeout(() => {
+                createTone(freq, 0.25, {
+                    type: 'sawtooth',
+                    volume: 0.5 * (1 - i * 0.15),
+                    attack: 0.01,
+                    decay: 0.1,
+                    release: 0.14,
+                    filterFreq: freq * 2
+                });
+            }, 150 + i * 120);
+        });
         
         // Final low impact
         setTimeout(() => {
-            playTone(60, 0.5, 'sawtooth', 0.6);
-            playTone(50, 0.5, 'sawtooth', 0.5);
-        }, 400);
-        
-        // Subtle high tone for contrast
-        setTimeout(() => {
-            playTone(200, 0.2, 'sine', 0.3);
-        }, 600);
+            createTone(50, 0.6, {
+                type: 'sawtooth',
+                volume: 0.4,
+                attack: 0.02,
+                decay: 0.2,
+                release: 0.38,
+                filterFreq: 100
+            });
+        }, 800);
     }
     
     function playNearMissSound() {
-        // Warning sound when close to monster
-        playTone(400, 0.1, 'sine', 0.15);
+        // Subtle warning with slight pitch bend
+        createTone(450, 0.12, {
+            type: 'sine',
+            volume: 0.2,
+            attack: 0.01,
+            decay: 0.05,
+            release: 0.06
+        });
+        // Slight pitch variation
+        setTimeout(() => {
+            createTone(500, 0.1, {
+                type: 'sine',
+                volume: 0.15,
+                attack: 0.01,
+                release: 0.09
+            });
+        }, 60);
     }
     
     function playLevelUpSound() {
-        // Ascending chord for level up
-        playTone(523, 0.15, 'sine', 0.25); // C5
-        setTimeout(() => playTone(659, 0.15, 'sine', 0.25), 100); // E5
-        setTimeout(() => playTone(784, 0.2, 'sine', 0.25), 200); // G5
+        // Joyful ascending major chord
+        const chord = [523.25, 659.25, 783.99]; // C5, E5, G5
+        chord.forEach((freq, i) => {
+            setTimeout(() => {
+                createTone(freq, 0.2, {
+                    type: 'sine',
+                    volume: 0.3,
+                    attack: 0.01,
+                    decay: 0.05,
+                    sustain: 0.8,
+                    release: 0.14
+                });
+            }, i * 50);
+        });
+        // Add octave
+        setTimeout(() => {
+            createTone(1046.5, 0.25, {
+                type: 'sine',
+                volume: 0.25,
+                attack: 0.01,
+                decay: 0.05,
+                sustain: 0.7,
+                release: 0.19
+            });
+        }, 200);
     }
     
-    // Haptic feedback system
-    function triggerHaptic(pattern) {
-        if (!hapticEnabled) return;
-        try {
-            if (typeof pattern === 'number') {
-                navigator.vibrate(pattern);
-            } else {
-                navigator.vibrate(pattern);
-            }
-        } catch (e) {
-            // Haptic not supported or failed
+    // Haptic feedback system - uses Oasiz platform API with better patterns
+    function triggerHaptic(type) {
+        if (!settings.haptics) return;
+        if (typeof (window).triggerHaptic === "function") {
+            (window).triggerHaptic(type);
         }
     }
     
     function hapticSwipe() {
-        triggerHaptic(25); // Stronger vibration for swipe
+        triggerHaptic("light");
     }
     
     function hapticCollision() {
-        triggerHaptic([100, 50, 100, 50, 150]); // Much stronger vibration pattern for collision
+        // Strong haptic for collision
+        triggerHaptic("error");
+        // Add a second pulse for more impact
+        setTimeout(() => {
+            if (settings.haptics) {
+                triggerHaptic("heavy");
+            }
+        }, 100);
     }
     
     function hapticNearMiss() {
-        triggerHaptic(40); // Stronger vibration for near miss
+        // Subtle warning haptic
+        triggerHaptic("light");
     }
     
     function hapticScore() {
-        triggerHaptic(15); // Stronger vibration for score
+        // Quick, satisfying haptic for score
+        triggerHaptic("light");
     }
     
     function hapticLevelUp() {
-        triggerHaptic([50, 30, 50, 30, 80, 30, 100]); // Stronger celebration pattern
+        // Celebratory haptic pattern
+        triggerHaptic("success");
+        setTimeout(() => {
+            if (settings.haptics) {
+                triggerHaptic("medium");
+            }
+        }, 150);
     }
     
     // Play milestone sound (100, 200, 300, etc.)
     function playMilestoneSound() {
-        // Play a pleasant ascending tone
-        playTone(440, 0.1, 'sine', 0.2); // A4
-        setTimeout(() => playTone(554, 0.1, 'sine', 0.2), 100); // C#5
-        setTimeout(() => playTone(659, 0.15, 'sine', 0.2), 200); // E5
+        // Pleasant ascending arpeggio
+        const notes = [440, 523.25, 659.25]; // A4, C5, E5
+        notes.forEach((freq, i) => {
+            setTimeout(() => {
+                createTone(freq, 0.15, {
+                    type: 'sine',
+                    volume: 0.25,
+                    attack: 0.01,
+                    decay: 0.05,
+                    release: 0.09
+                });
+            }, i * 80);
+        });
         hapticLevelUp();
     }
     
@@ -372,108 +628,334 @@
         setTimeout(() => playTone(1047, 0.4, 'sine', 0.3), 450); // C6
     }
     
-    // Play background music (continuous looping track)
+    // Play background music - improved with proper looping and musical structure
     function playBackgroundMusic() {
-        if (!audioContext || backgroundMusicPlaying) return;
+        if (!audioContext || backgroundMusicPlaying || !settings.music) return;
         
         backgroundMusicPlaying = true;
-        backgroundMusicOscillators = [];
+        backgroundMusicNodes = [];
         
-        const createContinuousLayer = (freq, type, volume, phase = 0) => {
-            if (!gameRunning || !backgroundMusicPlaying) return;
+        const now = audioContext.currentTime;
+        const loopDuration = 8; // 8 second loop
+        
+        // Create bass layer (A2 = 110Hz) - continuous
+        function createBassLayer() {
+            if (!gameRunning || !backgroundMusicPlaying || !settings.music) return;
+            
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            const filter = audioContext.createBiquadFilter();
+            
+            filter.type = 'lowpass';
+            filter.frequency.value = 200;
+            filter.Q.value = 1;
+            
+            oscillator.connect(filter);
+            filter.connect(gainNode);
+            gainNode.connect(musicGainNode);
+            
+            oscillator.frequency.value = 110; // A2
+            oscillator.type = 'sine';
+            
+            const currentTime = audioContext.currentTime;
+            gainNode.gain.setValueAtTime(0.08, currentTime);
+            
+            oscillator.start(currentTime);
+            
+            // Schedule stop and restart for looping
+            oscillator.stop(currentTime + loopDuration);
+            
+            setTimeout(() => {
+                if (gameRunning && backgroundMusicPlaying && settings.music) {
+                    createBassLayer();
+                }
+            }, loopDuration * 1000);
+            
+            backgroundMusicNodes.push({ oscillator, gainNode, filter });
+        }
+        
+        // Create harmony layer (A3 = 220Hz) - with subtle variation
+        function createHarmonyLayer() {
+            if (!gameRunning || !backgroundMusicPlaying || !settings.music) return;
             
             const oscillator = audioContext.createOscillator();
             const gainNode = audioContext.createGain();
             
             oscillator.connect(gainNode);
-            gainNode.connect(audioContext.destination);
+            gainNode.connect(musicGainNode);
             
-            oscillator.frequency.value = freq;
-            oscillator.type = type;
+            oscillator.frequency.value = 220; // A3
+            oscillator.type = 'triangle';
             
-            // Smooth fade in
-            const now = audioContext.currentTime;
-            gainNode.gain.setValueAtTime(0, now);
-            gainNode.gain.linearRampToValueAtTime(volume, now + 1);
-            gainNode.gain.setValueAtTime(volume, now + 1);
+            const currentTime = audioContext.currentTime;
+            // Subtle volume variation
+            gainNode.gain.setValueAtTime(0.05, currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.06, currentTime + loopDuration / 2);
+            gainNode.gain.linearRampToValueAtTime(0.05, currentTime + loopDuration);
             
-            oscillator.start(now + phase);
+            oscillator.start(currentTime);
+            oscillator.stop(currentTime + loopDuration);
             
-            backgroundMusicOscillators.push({ oscillator, gainNode });
-        };
+            setTimeout(() => {
+                if (gameRunning && backgroundMusicPlaying && settings.music) {
+                    createHarmonyLayer();
+                }
+            }, loopDuration * 1000);
+            
+            backgroundMusicNodes.push({ oscillator, gainNode });
+        }
         
-        // Create continuous ambient background music with multiple layers
-        // Bass layer - continuous low tone
-        createContinuousLayer(110, 'sine', 0.12); // A2 - slightly louder
+        // Create melody layer - simple pattern
+        function createMelodyLayer() {
+            if (!gameRunning || !backgroundMusicPlaying || !settings.music) return;
+            
+            const melody = [
+                { freq: 330, time: 0, duration: 1.5 },    // E4
+                { freq: 392, time: 2, duration: 1.5 },   // G4
+                { freq: 440, time: 4, duration: 1.5 },   // A4
+                { freq: 392, time: 6, duration: 2 }        // G4
+            ];
+            
+            melody.forEach(note => {
+                setTimeout(() => {
+                    if (!gameRunning || !backgroundMusicPlaying || !settings.music) return;
+                    
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+                    
+                    oscillator.connect(gainNode);
+                    gainNode.connect(musicGainNode);
+                    
+                    oscillator.frequency.value = note.freq;
+                    oscillator.type = 'sine';
+                    
+                    const currentTime = audioContext.currentTime;
+                    gainNode.gain.setValueAtTime(0, currentTime);
+                    gainNode.gain.linearRampToValueAtTime(0.04, currentTime + 0.1);
+                    gainNode.gain.setValueAtTime(0.04, currentTime + note.duration - 0.2);
+                    gainNode.gain.linearRampToValueAtTime(0, currentTime + note.duration);
+                    
+                    oscillator.start(currentTime);
+                    oscillator.stop(currentTime + note.duration);
+                    
+                    backgroundMusicNodes.push({ oscillator, gainNode });
+                }, note.time * 1000);
+            });
+            
+            setTimeout(() => {
+                if (gameRunning && backgroundMusicPlaying && settings.music) {
+                    createMelodyLayer();
+                }
+            }, loopDuration * 1000);
+        }
         
-        // Mid layer - continuous harmony
-        setTimeout(() => createContinuousLayer(220, 'sine', 0.08), 200); // A3
-        
-        // High layer - subtle melody
-        setTimeout(() => createContinuousLayer(330, 'sine', 0.05), 400); // E4
-        
-        // Additional layer for depth - very subtle
-        setTimeout(() => createContinuousLayer(165, 'triangle', 0.04), 600); // E3
-        
-        // Create a subtle rhythm pattern (every 4 seconds)
-        const createRhythmLayer = () => {
-            if (!gameRunning || !backgroundMusicPlaying) return;
+        // Create rhythm accent (every 2 seconds)
+        function createRhythmAccent() {
+            if (!gameRunning || !backgroundMusicPlaying || !settings.music) return;
             
             const oscillator = audioContext.createOscillator();
             const gainNode = audioContext.createGain();
+            const filter = audioContext.createBiquadFilter();
             
-            oscillator.connect(gainNode);
-            gainNode.connect(audioContext.destination);
+            filter.type = 'lowpass';
+            filter.frequency.value = 600;
+            
+            oscillator.connect(filter);
+            filter.connect(gainNode);
+            gainNode.connect(musicGainNode);
             
             oscillator.frequency.value = 440; // A4
             oscillator.type = 'sine';
             
-            const now = audioContext.currentTime;
-            // Quick pulse every 4 seconds
-            gainNode.gain.setValueAtTime(0, now);
-            gainNode.gain.linearRampToValueAtTime(0.06, now + 0.1);
-            gainNode.gain.linearRampToValueAtTime(0, now + 0.2);
+            const currentTime = audioContext.currentTime;
+            gainNode.gain.setValueAtTime(0, currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.03, currentTime + 0.05);
+            gainNode.gain.linearRampToValueAtTime(0, currentTime + 0.15);
             
-            oscillator.start(now);
-            oscillator.stop(now + 0.2);
+            oscillator.start(currentTime);
+            oscillator.stop(currentTime + 0.15);
             
-            backgroundMusicOscillators.push({ oscillator, gainNode });
+            backgroundMusicNodes.push({ oscillator, gainNode, filter });
             
-            // Schedule next pulse
             setTimeout(() => {
-                if (gameRunning && backgroundMusicPlaying) {
-                    createRhythmLayer();
+                if (gameRunning && backgroundMusicPlaying && settings.music) {
+                    createRhythmAccent();
                 }
-            }, 4000);
-        };
+            }, 2000);
+        }
         
-        // Start rhythm after initial fade in
-        setTimeout(() => createRhythmLayer(), 1000);
+        // Start all layers with slight delays for smooth fade-in
+        createBassLayer();
+        setTimeout(() => createHarmonyLayer(), 500);
+        setTimeout(() => createMelodyLayer(), 1000);
+        setTimeout(() => createRhythmAccent(), 1500);
     }
     
     // Stop background music
     function stopBackgroundMusic() {
         backgroundMusicPlaying = false;
-        backgroundMusicOscillators.forEach(({ oscillator, gainNode }) => {
+        if (backgroundMusicInterval) {
+            clearInterval(backgroundMusicInterval);
+            backgroundMusicInterval = null;
+        }
+        backgroundMusicNodes.forEach(({ oscillator, gainNode }) => {
             try {
-                gainNode.gain.cancelScheduledValues(audioContext.currentTime);
-                gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-                oscillator.stop();
+                if (gainNode) {
+                    gainNode.gain.cancelScheduledValues(audioContext.currentTime);
+                    gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+                }
+                if (oscillator) {
+                    oscillator.stop();
+                }
             } catch (e) {
                 // Already stopped
             }
         });
-        backgroundMusicOscillators = [];
+        backgroundMusicNodes = [];
     }
     
-    // Show new record notification
-    function showNewRecordNotification() {
-        newRecordEl.style.display = 'block';
-        playNewRecordSound();
-        setTimeout(() => {
-            newRecordEl.style.display = 'none';
-        }, 3000);
+    // Play start screen background music (lighter, ambient music)
+    function playStartScreenMusic() {
+        if (!audioContext || startScreenMusicPlaying || !settings.music) return;
+        
+        startScreenMusicPlaying = true;
+        startScreenMusicNodes = [];
+        
+        const now = audioContext.currentTime;
+        const loopDuration = 12; // 12 second loop for start screen
+        
+        // Create gentle ambient bass layer (A2 = 110Hz)
+        function createStartBassLayer() {
+            if (!startScreenMusicPlaying || !settings.music) return;
+            
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            const filter = audioContext.createBiquadFilter();
+            
+            filter.type = 'lowpass';
+            filter.frequency.value = 150;
+            filter.Q.value = 1;
+            
+            oscillator.connect(filter);
+            filter.connect(gainNode);
+            gainNode.connect(musicGainNode);
+            
+            oscillator.frequency.value = 110; // A2
+            oscillator.type = 'sine';
+            
+            const currentTime = audioContext.currentTime;
+            gainNode.gain.setValueAtTime(0.05, currentTime); // Quieter for start screen
+            
+            oscillator.start(currentTime);
+            oscillator.stop(currentTime + loopDuration);
+            
+            setTimeout(() => {
+                if (startScreenMusicPlaying && settings.music) {
+                    createStartBassLayer();
+                }
+            }, loopDuration * 1000);
+            
+            startScreenMusicNodes.push({ oscillator, gainNode, filter });
+        }
+        
+        // Create gentle harmony layer (A3 = 220Hz)
+        function createStartHarmonyLayer() {
+            if (!startScreenMusicPlaying || !settings.music) return;
+            
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(musicGainNode);
+            
+            oscillator.frequency.value = 220; // A3
+            oscillator.type = 'triangle';
+            
+            const currentTime = audioContext.currentTime;
+            gainNode.gain.setValueAtTime(0.03, currentTime); // Very quiet
+            
+            oscillator.start(currentTime);
+            oscillator.stop(currentTime + loopDuration);
+            
+            setTimeout(() => {
+                if (startScreenMusicPlaying && settings.music) {
+                    createStartHarmonyLayer();
+                }
+            }, loopDuration * 1000);
+            
+            startScreenMusicNodes.push({ oscillator, gainNode });
+        }
+        
+        // Create subtle melody pattern
+        function createStartMelodyLayer() {
+            if (!startScreenMusicPlaying || !settings.music) return;
+            
+            const melody = [
+                { freq: 330, time: 0, duration: 2 },    // E4
+                { freq: 392, time: 3, duration: 2 },   // G4
+                { freq: 440, time: 6, duration: 2 },   // A4
+                { freq: 392, time: 9, duration: 3 }    // G4
+            ];
+            
+            melody.forEach(note => {
+                setTimeout(() => {
+                    if (!startScreenMusicPlaying || !settings.music) return;
+                    
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+                    
+                    oscillator.connect(gainNode);
+                    gainNode.connect(musicGainNode);
+                    
+                    oscillator.frequency.value = note.freq;
+                    oscillator.type = 'sine';
+                    
+                    const currentTime = audioContext.currentTime;
+                    gainNode.gain.setValueAtTime(0, currentTime);
+                    gainNode.gain.linearRampToValueAtTime(0.02, currentTime + 0.2);
+                    gainNode.gain.setValueAtTime(0.02, currentTime + note.duration - 0.3);
+                    gainNode.gain.linearRampToValueAtTime(0, currentTime + note.duration);
+                    
+                    oscillator.start(currentTime);
+                    oscillator.stop(currentTime + note.duration);
+                    
+                    startScreenMusicNodes.push({ oscillator, gainNode });
+                }, note.time * 1000);
+            });
+            
+            setTimeout(() => {
+                if (startScreenMusicPlaying && settings.music) {
+                    createStartMelodyLayer();
+                }
+            }, loopDuration * 1000);
+        }
+        
+        // Start all layers
+        createStartBassLayer();
+        setTimeout(() => createStartHarmonyLayer(), 1000);
+        setTimeout(() => createStartMelodyLayer(), 2000);
     }
+    
+    // Stop start screen music
+    function stopStartScreenMusic() {
+        startScreenMusicPlaying = false;
+        startScreenMusicNodes.forEach(({ oscillator, gainNode }) => {
+            try {
+                if (gainNode) {
+                    gainNode.gain.cancelScheduledValues(audioContext.currentTime);
+                    gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+                }
+                if (oscillator) {
+                    oscillator.stop();
+                }
+            } catch (e) {
+                // Already stopped
+            }
+        });
+        startScreenMusicNodes = [];
+    }
+    
+    // Show new record notification (removed - platform handles leaderboards)
 
     // Finger (player) properties
     const finger = {
@@ -527,8 +1009,8 @@
         ]
     };
 
-    // Game settings
-    const settings = {
+    // Game configuration
+    const gameSettings = {
         monsterSpawnRate: 0.05, // Increased from 0.015 - more monsters spawn
         monsterSpeed: 8.0, // Increased base speed for faster enemy movement
         trailLength: 15,
@@ -539,7 +1021,7 @@
 
     // Get current level based on score
     function getCurrentLevel() {
-        return Math.floor(score / settings.levelUpScore) + 1;
+        return Math.floor(score / gameSettings.levelUpScore) + 1;
     }
 
     // Get available monster types - changes every 50 score
@@ -646,7 +1128,7 @@
     // Spawn monster - only from top, moving downward
     function spawnMonster() {
         // Increase spawn rate with level (more aggressive progression)
-        const spawnRate = settings.monsterSpawnRate * (1 + (level - 1) * 0.5);
+        const spawnRate = gameSettings.monsterSpawnRate * (1 + (level - 1) * 0.5);
         if (Math.random() < spawnRate) {
             const availableTypes = getMonsterTypesForLevel();
             const typeDef = availableTypes[Math.floor(Math.random() * availableTypes.length)];
@@ -659,7 +1141,7 @@
             // Move downward only (slight horizontal variation for visual interest)
             const vx = (Math.random() - 0.5) * 0.3; // Small horizontal drift
             // Speed increases every 50 score (each level) - more aggressive scaling
-            const vy = settings.monsterSpeed * (1 + (level - 1) * 0.6) + Math.random() * 0.8; // Faster downward movement with aggressive level scaling
+            const vy = gameSettings.monsterSpeed * (1 + (level - 1) * 0.6) + Math.random() * 0.8; // Faster downward movement with aggressive level scaling
 
             monsters.push({
                 x: x,
@@ -759,7 +1241,7 @@
 
         // Update score (survival-based - increases automatically)
         scoreTimer += clampedDelta;
-        if (scoreTimer >= 1000 / settings.scorePerSecond) { // Score increases every second
+        if (scoreTimer >= 1000 / gameSettings.scorePerSecond) { // Score increases every second
             score += 1;
             scoreEl.textContent = score;
             
@@ -804,7 +1286,7 @@
 
         // Update trail
         finger.trail.push({ x: finger.x, y: finger.y });
-        if (finger.trail.length > settings.trailLength) {
+        if (finger.trail.length > gameSettings.trailLength) {
             finger.trail.shift();
         }
 
@@ -857,15 +1339,59 @@
         scoreEl.textContent = '0';
         gameOverEl.style.display = 'none';
         newRecordEl.style.display = 'none';
-        if (startScreenEl) startScreenEl.style.display = 'none';
+        // Hide start screen and corner buttons
+        if (startScreenEl) {
+            startScreenEl.style.display = 'none';
+        }
+        
+        // Hide corner buttons when game is running
+        const topLeftButtons = document.querySelector('.top-left-buttons');
+        const topRightButtons = document.querySelector('.top-right-buttons');
+        if (topLeftButtons) {
+            topLeftButtons.style.display = 'none';
+        }
+        if (topRightButtons) {
+            topRightButtons.style.display = 'none';
+        }
+        
+        // Hide final score container on start screen
+        const finalScoreContainer = document.getElementById('finalScoreContainer');
+        if (finalScoreContainer) {
+            finalScoreContainer.style.display = 'none';
+        }
+        
+        // Show game elements
+        if (canvas) {
+            canvas.style.visibility = 'visible';
+            canvas.style.pointerEvents = 'auto';
+        }
+        if (scoreEl && scoreEl.parentElement) {
+            scoreEl.parentElement.style.visibility = 'visible';
+            scoreEl.parentElement.style.pointerEvents = 'auto';
+        }
+        const instructionsEl = document.getElementById('instructions');
+        if (instructionsEl) {
+            instructionsEl.style.visibility = 'visible';
+        }
+        
         initFinger();
         initBackgroundParticles();
         
-        // Start background music
-        if (audioContext && audioContext.state === 'suspended') {
-            audioContext.resume();
+        // Stop start screen music and start game music
+        stopStartScreenMusic();
+        
+        // Resume audio context and start background music
+        if (audioContext) {
+            if (audioContext.state === 'suspended') {
+                audioContext.resume().then(() => {
+                    if (settings.music) {
+                        playBackgroundMusic();
+                    }
+                });
+            } else if (settings.music) {
+                playBackgroundMusic();
+            }
         }
-        playBackgroundMusic();
         
         animationId = requestAnimationFrame(gameLoop);
     }
@@ -877,21 +1403,72 @@
         if (animationId) {
             cancelAnimationFrame(animationId);
         }
-        finalScoreEl.textContent = `Final Score: ${score}`;
         
         // Play dramatic game over sound (better than collision sound)
         playGameOverSound();
         
-        // Check for new record
-        const isNewRecord = saveHighScore(score);
-        if (isNewRecord) {
-            showNewRecordNotification();
+        // Submit score to Oasiz platform
+        if (typeof (window).submitScore === "function") {
+            (window).submitScore(score);
         }
         
-        // Delay showing game over modal slightly for dramatic effect
-        setTimeout(() => {
-            gameOverEl.style.display = 'block';
-        }, 300);
+        // Update best score
+        saveBestScore(score);
+        
+        // Hide game elements
+        if (canvas) {
+            canvas.style.visibility = 'hidden';
+            canvas.style.pointerEvents = 'none';
+        }
+        if (scoreEl && scoreEl.parentElement) {
+            scoreEl.parentElement.style.visibility = 'hidden';
+            scoreEl.parentElement.style.pointerEvents = 'none';
+        }
+        const instructionsEl = document.getElementById('instructions');
+        if (instructionsEl) {
+            instructionsEl.style.visibility = 'hidden';
+        }
+        
+        // Hide game over modal
+        if (gameOverEl) {
+            gameOverEl.style.display = 'none';
+        }
+        
+        // Show start screen with scores
+        if (startScreenEl) {
+            // Update final score display
+            const finalScoreDisplay = document.getElementById('finalScoreDisplay');
+            const finalScoreContainer = document.getElementById('finalScoreContainer');
+            if (finalScoreDisplay) {
+                finalScoreDisplay.textContent = score.toString();
+            }
+            if (finalScoreContainer) {
+                finalScoreContainer.style.display = 'flex';
+            }
+            
+            // Update best score display (already updated by saveBestScore)
+            if (bestScoreDisplay) {
+                bestScoreDisplay.textContent = bestScore.toString();
+            }
+            
+            // Start start screen music
+            playStartScreenMusic();
+            
+            // Show corner buttons
+            const topLeftButtons = document.querySelector('.top-left-buttons');
+            const topRightButtons = document.querySelector('.top-right-buttons');
+            if (topLeftButtons) {
+                topLeftButtons.style.display = 'flex';
+            }
+            if (topRightButtons) {
+                topRightButtons.style.display = 'flex';
+            }
+            
+            startScreenEl.style.display = 'flex';
+            
+            // Start start screen music
+            playStartScreenMusic();
+        }
     }
 
     // Touch/Mouse tracking for movement
@@ -961,10 +1538,61 @@
         isDragging = false;
     });
 
-    restartBtn.addEventListener('click', function(e) {
-        e.preventDefault();
-        startGame();
-    });
+    if (restartBtn) {
+        restartBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Hide game over modal
+            if (gameOverEl) {
+                gameOverEl.style.display = 'none';
+            }
+            
+            // Show start screen with current scores
+            if (startScreenEl) {
+                // Show corner buttons
+                const topLeftButtons = document.querySelector('.top-left-buttons');
+                const topRightButtons = document.querySelector('.top-right-buttons');
+                if (topLeftButtons) {
+                    topLeftButtons.style.display = 'flex';
+                }
+                if (topRightButtons) {
+                    topRightButtons.style.display = 'flex';
+                }
+                
+                startScreenEl.style.display = 'flex';
+            }
+            
+            // Hide game elements
+            if (canvas) {
+                canvas.style.visibility = 'hidden';
+                canvas.style.pointerEvents = 'none';
+            }
+            if (scoreEl && scoreEl.parentElement) {
+                scoreEl.parentElement.style.visibility = 'hidden';
+                scoreEl.parentElement.style.pointerEvents = 'none';
+            }
+            const instructionsEl = document.getElementById('instructions');
+            if (instructionsEl) {
+                instructionsEl.style.visibility = 'hidden';
+            }
+            
+            // Reset game state
+            gameRunning = false;
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+            stopBackgroundMusic();
+            
+            // Start start screen music
+            if (settings.music) {
+                playStartScreenMusic();
+            }
+            
+            triggerHaptic("light");
+        });
+    }
 
     // Prevent default touch behaviors (but allow canvas touchmove)
     document.addEventListener('touchmove', function(e) {
@@ -973,46 +1601,273 @@
         }
     }, { passive: false });
 
-    // Initialize
-    loadHighScore();
-    initAudio();
-    
-    // Update start screen high score
-    if (startHighScoreEl) {
-        startHighScoreEl.textContent = highScore;
+    // Settings modal functionality
+    if (settingsBtn) {
+        settingsBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (settingsModal) {
+                settingsModal.style.display = 'flex';
+                triggerHaptic("light");
+            }
+        });
     }
+    
+    if (closeSettingsBtn) {
+        closeSettingsBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (settingsModal) {
+                settingsModal.style.display = 'none';
+                triggerHaptic("light");
+            }
+        });
+    }
+    
+    // Close settings modal when clicking outside
+    if (settingsModal) {
+        settingsModal.addEventListener('click', function(e) {
+            if (e.target === settingsModal) {
+                settingsModal.style.display = 'none';
+            }
+        });
+    }
+    
+    // Helper function to update sound toggle icon
+    function updateSoundToggleIcon() {
+        const soundOnIcon = document.getElementById('soundOnIcon');
+        const soundOffIcon = document.getElementById('soundOffIcon');
+        if (soundOnIcon && soundOffIcon) {
+            const isMuted = !settings.music && !settings.fx;
+            if (isMuted) {
+                soundOnIcon.style.display = 'none';
+                soundOffIcon.style.display = 'block';
+            } else {
+                soundOnIcon.style.display = 'block';
+                soundOffIcon.style.display = 'none';
+            }
+        }
+    }
+    
+    // Sound toggle button (top right) - toggles both music and FX
+    if (soundToggleBtn) {
+        soundToggleBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Check if currently muted (both are off)
+            const currentlyMuted = !settings.music && !settings.fx;
+            
+            // Toggle: if muted, unmute; if not muted, mute
+            settings.music = currentlyMuted;
+            settings.fx = currentlyMuted;
+            
+            // Update checkboxes
+            if (musicToggle) musicToggle.checked = settings.music;
+            if (fxToggle) fxToggle.checked = settings.fx;
+            
+            saveSettings();
+            
+            // Update icon
+            updateSoundToggleIcon();
+            
+            // Update audio - stop all music if muting
+            if (!settings.music) {
+                stopBackgroundMusic();
+                stopStartScreenMusic();
+            } else if (audioContext) {
+                // Unmuting - resume audio context and play appropriate music
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+                if (gameRunning) {
+                    playBackgroundMusic();
+                } else if (startScreenEl && startScreenEl.style.display !== 'none') {
+                    // On start screen, play start screen music
+                    playStartScreenMusic();
+                }
+            }
+            
+            triggerHaptic("light");
+        });
+        
+        // Initialize icon state
+        updateSoundToggleIcon();
+    }
+    
+    // Achievements button (placeholder)
+    if (achievementsBtn) {
+        achievementsBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            triggerHaptic("light");
+            // Placeholder - could open leaderboard or achievements
+            alert('Achievements coming soon!');
+        });
+    }
+    
+    // More games button (placeholder)
+    if (moreGamesBtn) {
+        moreGamesBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            triggerHaptic("light");
+            // Placeholder - could navigate to more games
+            alert('More games coming soon!');
+        });
+    }
+    
+    // Settings toggle handlers
+    if (musicToggle) {
+        musicToggle.addEventListener('change', function() {
+            settings.music = this.checked;
+            saveSettings();
+            
+            // Update sound toggle icon
+            updateSoundToggleIcon();
+            
+            if (!settings.music) {
+                stopBackgroundMusic();
+                stopStartScreenMusic();
+            } else if (audioContext) {
+                // Resume audio context if suspended
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+                if (gameRunning) {
+                    playBackgroundMusic();
+                } else if (startScreenEl && startScreenEl.style.display !== 'none') {
+                    // If on start screen, play start screen music
+                    playStartScreenMusic();
+                }
+            }
+            triggerHaptic("light");
+        });
+    }
+    
+    if (fxToggle) {
+        fxToggle.addEventListener('change', function() {
+            settings.fx = this.checked;
+            saveSettings();
+            
+            // Update sound toggle icon
+            updateSoundToggleIcon();
+            
+            // Play a test sound when enabling
+            if (settings.fx && audioContext) {
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+                createTone(440, 0.1, {
+                    type: 'sine',
+                    volume: 0.2,
+                    attack: 0.01,
+                    release: 0.09
+                });
+            }
+            triggerHaptic("light");
+        });
+    }
+    
+    if (hapticsToggle) {
+        hapticsToggle.addEventListener('change', function() {
+            settings.haptics = this.checked;
+            saveSettings();
+            if (settings.haptics) {
+                triggerHaptic("light");
+            }
+        });
+    }
+    
+    // Initialize
+    loadSettings();
+    initAudio();
+    loadBestScore(); // Load and display best score from localStorage
+    
+    // Initialize sound toggle icon state after settings are loaded
+    updateSoundToggleIcon();
     
     // Load images and then initialize
     loadImages().then(() => {
         initFinger();
         
-        // Show start screen initially
+        // Show start screen initially and hide game elements
         if (startScreenEl) {
             startScreenEl.style.display = 'flex';
         }
         
+        // Show corner buttons on start screen
+        const topLeftButtons = document.querySelector('.top-left-buttons');
+        const topRightButtons = document.querySelector('.top-right-buttons');
+        if (topLeftButtons) {
+            topLeftButtons.style.display = 'flex';
+        }
+        if (topRightButtons) {
+            topRightButtons.style.display = 'flex';
+        }
+        
+        // Hide final score container initially
+        const finalScoreContainer = document.getElementById('finalScoreContainer');
+        if (finalScoreContainer) {
+            finalScoreContainer.style.display = 'none';
+        }
+        
+        // Start start screen music
+        if (audioContext && settings.music) {
+            if (audioContext.state === 'suspended') {
+                // Will resume on user interaction
+            } else {
+                playStartScreenMusic();
+            }
+        }
+        
+        // Hide game elements when start screen is visible
+        if (canvas) {
+            canvas.style.visibility = 'hidden';
+            canvas.style.pointerEvents = 'none';
+        }
+        if (scoreEl && scoreEl.parentElement) {
+            scoreEl.parentElement.style.visibility = 'hidden';
+            scoreEl.parentElement.style.pointerEvents = 'none';
+        }
+        const instructionsEl = document.getElementById('instructions');
+        if (instructionsEl) {
+            instructionsEl.style.visibility = 'hidden';
+        }
+        
         // Start game function
         function beginGame() {
+            // Resume audio context if suspended (required for user interaction)
             if (audioContext && audioContext.state === 'suspended') {
-                audioContext.resume();
+                audioContext.resume().then(() => {
+                    stopStartScreenMusic(); // Stop start screen music
+                    startGame();
+                }).catch(() => {
+                    stopStartScreenMusic();
+                    startGame();
+                });
+            } else {
+                stopStartScreenMusic(); // Stop start screen music
+                startGame();
             }
-            startGame();
         }
         
-        // Start game on button click
-        if (startBtn) {
-            startBtn.addEventListener('click', beginGame);
-        }
-        
-        // Start game on canvas tap
+        // Tap/Click anywhere to start game
         function startGameOnInteraction(e) {
             if (startScreenEl && startScreenEl.style.display !== 'none') {
                 e.preventDefault();
+                e.stopPropagation();
                 beginGame();
             }
         }
         
-        canvas.addEventListener('touchstart', startGameOnInteraction, { once: false });
-        canvas.addEventListener('mousedown', startGameOnInteraction, { once: false });
+        // Start game on tap/click anywhere on start screen or canvas
+        if (startScreenEl) {
+            startScreenEl.addEventListener('touchstart', startGameOnInteraction, { passive: false });
+            startScreenEl.addEventListener('click', startGameOnInteraction);
+        }
+        
+        canvas.addEventListener('touchstart', startGameOnInteraction, { passive: false });
+        canvas.addEventListener('click', startGameOnInteraction);
     });
 })();

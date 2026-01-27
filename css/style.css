@@ -118,9 +118,79 @@ body::before {
     }
 }
 
+/* Corner Buttons - Top Left and Top Right */
+.top-left-buttons,
+.top-right-buttons {
+    position: fixed;
+    z-index: 300; /* Above start screen (z-index: 200) */
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    pointer-events: none;
+}
+
+.top-left-buttons {
+    top: 45px; /* Will be updated by JS for mobile */
+    left: 10px;
+}
+
+.top-right-buttons {
+    top: 45px; /* Will be updated by JS for mobile */
+    right: 10px;
+}
+
+.corner-button {
+    background: linear-gradient(135deg, #FF6B35 0%, #FF8C5A 100%);
+    border: none;
+    padding: 10px;
+    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 
+        0 4px 15px rgba(255, 107, 53, 0.4),
+        0 0 20px rgba(255, 140, 90, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    color: var(--text-white);
+    -webkit-tap-highlight-color: transparent;
+    pointer-events: auto;
+    font-size: 0; /* Remove spacing from inline elements */
+}
+
+.corner-button i {
+    font-size: 20px;
+    line-height: 1;
+    display: block;
+}
+
+.corner-button:hover {
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 
+        0 6px 20px rgba(255, 107, 53, 0.5),
+        0 0 30px rgba(255, 140, 90, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.corner-button:active {
+    transform: translateY(0) scale(0.95);
+    box-shadow: 
+        0 2px 10px rgba(255, 107, 53, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.corner-button i {
+    font-size: 20px;
+    line-height: 1;
+    display: block;
+}
+
 #ui {
     position: fixed;
-    top: 10px;
+    top: 45px; /* Default desktop safe area - updated by JS */
     left: 10px;
     right: 10px;
     display: flex;
@@ -129,6 +199,172 @@ body::before {
     z-index: 10;
     pointer-events: none;
 }
+
+#ui > * {
+    pointer-events: auto;
+}
+
+.settings-button {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+    border: none;
+    padding: 12px;
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 
+        var(--shadow-md),
+        var(--glow-primary),
+        inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    color: var(--text-white);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.settings-button:hover {
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 
+        0 10px 30px rgba(78, 205, 196, 0.6),
+        0 0 40px rgba(78, 205, 196, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.settings-button:active {
+    transform: translateY(0) scale(0.95);
+}
+
+.settings-button svg {
+    width: 24px;
+    height: 24px;
+}
+
+/* Settings Modal */
+.settings-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(10px);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.settings-content {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(240, 248, 255, 0.98) 100%);
+    padding: 40px;
+    border-radius: 30px;
+    min-width: 320px;
+    max-width: 90%;
+    box-shadow: 
+        var(--shadow-lg),
+        0 0 40px rgba(78, 205, 196, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    border: 3px solid rgba(255, 255, 255, 0.6);
+    animation: slideUp 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.settings-content h2 {
+    font-size: 32px;
+    font-weight: 900;
+    font-family: 'Orbitron', 'Rajdhani', sans-serif;
+    color: var(--text-primary);
+    margin-bottom: 30px;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.settings-option {
+    margin-bottom: 20px;
+}
+
+.settings-option label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    padding: 15px;
+    border-radius: 15px;
+    background: rgba(78, 205, 196, 0.1);
+    transition: all 0.3s ease;
+}
+
+.settings-option label:hover {
+    background: rgba(78, 205, 196, 0.2);
+}
+
+.settings-label {
+    font-size: 20px;
+    font-weight: 600;
+    font-family: 'Rajdhani', sans-serif;
+    color: var(--text-primary);
+    letter-spacing: 1px;
+}
+
+.settings-option input[type="checkbox"] {
+    display: none;
+}
+
+.toggle-switch {
+    position: relative;
+    width: 60px;
+    height: 30px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 15px;
+    transition: all 0.3s ease;
+}
+
+.toggle-switch::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 24px;
+    height: 24px;
+    background: white;
+    border-radius: 50%;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.settings-option input[type="checkbox"]:checked + .toggle-switch {
+    background: var(--primary-color);
+}
+
+.settings-option input[type="checkbox"]:checked + .toggle-switch::after {
+    transform: translateX(30px);
+}
+
+.settings-content .modal-button {
+    width: 100%;
+    margin-top: 20px;
+}
+
+/* Safe areas handled by JavaScript for dynamic updates */
 
 #score {
     background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
@@ -180,24 +416,42 @@ body::before {
     100% { transform: scale(1); }
 }
 
-#highScore {
-    background: linear-gradient(135deg, var(--accent-gold) 0%, var(--accent-gold-dark) 100%);
-    padding: 12px 22px;
-    border-radius: 28px;
-    font-size: 20px;
-    font-weight: 700;
-    font-family: 'Orbitron', 'Rajdhani', monospace;
-    color: var(--text-primary);
-    text-shadow: 
-        0 0 12px rgba(255, 255, 255, 0.8),
-        1px 1px 4px rgba(0, 0, 0, 0.3);
+.settings-button {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+    border: none;
+    padding: 12px;
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 
         var(--shadow-md),
-        var(--glow-gold),
-        inset 0 1px 0 rgba(255, 255, 255, 0.5);
-    border: 2px solid var(--glass-border);
-    letter-spacing: 1.5px;
-    font-variant-numeric: tabular-nums;
+        var(--glow-primary),
+        inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    color: var(--text-white);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.settings-button:hover {
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 
+        0 10px 30px rgba(78, 205, 196, 0.6),
+        0 0 40px rgba(78, 205, 196, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.settings-button:active {
+    transform: scale(0.95);
+}
+
+.settings-button svg {
+    width: 24px;
+    height: 24px;
 }
 
 #gameOver {
@@ -391,9 +645,18 @@ body::before {
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 200;
+    z-index: 250; /* Above game canvas and UI */
     animation: startScreenFadeIn 0.5s ease-out;
     overflow: hidden;
+    pointer-events: auto;
+}
+
+/* Hide game elements when start screen is visible */
+#startScreen:not([style*="display: none"]) ~ #gameCanvas,
+#startScreen:not([style*="display: none"]) ~ #ui,
+#startScreen:not([style*="display: none"]) ~ #instructions {
+    visibility: hidden;
+    pointer-events: none;
 }
 
 #startScreen::before {
@@ -446,18 +709,15 @@ body::before {
 
 .start-content {
     text-align: center;
-    padding: 40px;
+    padding: 0;
     max-width: 90%;
     animation: startContentPop 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55) 0.2s both;
     position: relative;
     z-index: 10;
-    background: var(--glass-bg);
-    backdrop-filter: blur(20px);
-    border-radius: 40px;
-    border: 2px solid var(--glass-border);
-    box-shadow: 
-        var(--shadow-lg),
-        inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    background: none;
+    backdrop-filter: none;
+    border: none;
+    box-shadow: none;
 }
 
 @keyframes startContentPop {
@@ -472,20 +732,20 @@ body::before {
 }
 
 .game-title {
-    font-size: 64px;
+    font-size: 72px;
     font-weight: 900;
     font-family: 'Orbitron', 'Rajdhani', sans-serif;
-    color: var(--text-white);
+    color: #FFD700; /* Yellow like reference */
     text-shadow: 
-        0 0 30px rgba(255, 255, 255, 0.9),
-        0 0 60px rgba(78, 205, 196, 0.8),
-        3px 3px 8px rgba(0, 0, 0, 0.3),
-        0 0 80px rgba(135, 206, 235, 0.6);
-    margin-bottom: 15px;
-    letter-spacing: 3px;
-    animation: titleBounce 2s ease-in-out infinite, titleGlow 3s ease-in-out infinite;
+        3px 3px 0px rgba(0, 0, 0, 0.3),
+        6px 6px 10px rgba(0, 0, 0, 0.4),
+        0 0 20px rgba(255, 215, 0, 0.6);
+    margin-bottom: 30px;
+    letter-spacing: 4px;
+    animation: titleBounce 2s ease-in-out infinite;
     position: relative;
     text-transform: uppercase;
+    line-height: 1.1;
 }
 
 
@@ -513,17 +773,70 @@ body::before {
     }
 }
 
-.game-subtitle {
-    font-size: 28px;
-    font-weight: 600;
+/* Final Score Display (shown after game ends) */
+.final-score-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 20px;
+    gap: 8px;
+}
+
+.final-label {
+    font-size: 18px;
+    font-weight: 700;
     font-family: 'Rajdhani', sans-serif;
-    color: rgba(255, 255, 255, 0.95);
+    color: #2d5016; /* Dark green like reference */
     text-shadow: 
-        2px 2px 6px rgba(0, 0, 0, 0.3),
-        0 0 20px rgba(255, 255, 255, 0.4);
-    margin-bottom: 40px;
+        1px 1px 2px rgba(255, 255, 255, 0.5),
+        2px 2px 4px rgba(0, 0, 0, 0.2);
     letter-spacing: 2px;
     text-transform: uppercase;
+}
+
+.final-value {
+    font-size: 42px;
+    font-weight: 900;
+    font-family: 'Orbitron', 'Rajdhani', monospace;
+    color: #2d5016; /* Dark green like reference */
+    text-shadow: 
+        2px 2px 4px rgba(255, 255, 255, 0.6),
+        3px 3px 6px rgba(0, 0, 0, 0.3);
+    letter-spacing: 3px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Best Score Display */
+.best-score-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 60px;
+    gap: 8px;
+}
+
+.best-label {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: 'Rajdhani', sans-serif;
+    color: #2d5016; /* Dark green like reference */
+    text-shadow: 
+        1px 1px 2px rgba(255, 255, 255, 0.5),
+        2px 2px 4px rgba(0, 0, 0, 0.2);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+.best-value {
+    font-size: 48px;
+    font-weight: 900;
+    font-family: 'Orbitron', 'Rajdhani', monospace;
+    color: #2d5016; /* Dark green like reference */
+    text-shadow: 
+        2px 2px 4px rgba(255, 255, 255, 0.6),
+        3px 3px 6px rgba(0, 0, 0, 0.3);
+    letter-spacing: 3px;
+    font-variant-numeric: tabular-nums;
 }
 
 .start-stats {
@@ -621,13 +934,17 @@ body::before {
 }
 
 .start-hint {
-    font-size: 16px;
-    font-weight: 600;
+    font-size: 24px;
+    font-weight: 700;
     font-family: 'Rajdhani', sans-serif;
-    color: rgba(255, 255, 255, 0.8);
-    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.3);
+    color: #2d5016; /* Dark green like reference */
+    text-shadow: 
+        2px 2px 4px rgba(255, 255, 255, 0.6),
+        3px 3px 6px rgba(0, 0, 0, 0.3);
     animation: hintPulse 2s ease-in-out infinite;
-    letter-spacing: 1px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-top: 40px;
 }
 
 @keyframes hintPulse {
