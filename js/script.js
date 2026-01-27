@@ -5,6 +5,7 @@
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const scoreEl = document.getElementById('score');
+    const levelBadgeEl = document.getElementById('levelBadge');
     const gameOverEl = document.getElementById('gameOver');
     const finalScoreEl = document.getElementById('finalScore');
     const restartBtn = document.getElementById('restartBtn');
@@ -621,11 +622,11 @@
     
     // Play new record sound
     function playNewRecordSound() {
-        // Play a fanfare
-        playTone(523, 0.2, 'sine', 0.3); // C5
-        setTimeout(() => playTone(659, 0.2, 'sine', 0.3), 150); // E5
-        setTimeout(() => playTone(784, 0.3, 'sine', 0.3), 300); // G5
-        setTimeout(() => playTone(1047, 0.4, 'sine', 0.3), 450); // C6
+        if (!audioContext || !settings.fx) return;
+        createTone(523, 0.2, { type: 'sine', volume: 0.3 });
+        setTimeout(() => createTone(659, 0.2, { type: 'sine', volume: 0.3 }), 150);
+        setTimeout(() => createTone(784, 0.3, { type: 'sine', volume: 0.3 }), 300);
+        setTimeout(() => createTone(1047, 0.4, { type: 'sine', volume: 0.3 }), 450);
     }
     
     // Play background music - improved with proper looping and musical structure
@@ -1009,31 +1010,117 @@
         ]
     };
 
-    // Game configuration
+    // Game configuration (defaults; pattern overrides per run)
     const gameSettings = {
-        monsterSpawnRate: 0.05, // Increased from 0.015 - more monsters spawn
-        monsterSpeed: 8.0, // Increased base speed for faster enemy movement
+        monsterSpawnRate: 0.05,
+        monsterSpeed: 8.0,
         trailLength: 15,
-        scoreRate: 0.1, // Score per frame
-        scorePerSecond: 2, // Score increases 2 times per second
-        levelUpScore: 50 // Score needed to level up - speed increases every 50 score
+        scoreRate: 0.1,
+        scorePerSecond: 2,
+        levelUpScore: 50
     };
 
-    // Get current level based on score
-    function getCurrentLevel() {
-        return Math.floor(score / gameSettings.levelUpScore) + 1;
+    // Per-run pattern (like MMM Fingers: different each play)
+    let gamePattern = null;
+    let patternTime = 0;
+    const MONSTER_KEYS = ['monster1', 'monster2', 'monster3', 'monster4'];
+
+    const patternPresets = [
+        {
+            name: 'classic',
+            levelUpScore: 50,
+            monsterSpawnRate: 0.05,
+            monsterSpeed: 8.0,
+            monsterCycleOrder: [0, 1, 2, 3],
+            spawnStyle: 'steady',
+            horizontalDrift: 0.3,
+            levelSpeedScale: 0.6,
+            levelSpawnScale: 0.5
+        },
+        {
+            name: 'reverse',
+            levelUpScore: 45,
+            monsterSpawnRate: 0.06,
+            monsterSpeed: 8.5,
+            monsterCycleOrder: [3, 2, 1, 0],
+            spawnStyle: 'steady',
+            horizontalDrift: 0.5,
+            levelSpeedScale: 0.55,
+            levelSpawnScale: 0.55
+        },
+        {
+            name: 'burst',
+            levelUpScore: 55,
+            monsterSpawnRate: 0.04,
+            monsterSpeed: 7.5,
+            monsterCycleOrder: [1, 0, 3, 2],
+            spawnStyle: 'burst',
+            horizontalDrift: 0.25,
+            levelSpeedScale: 0.5,
+            levelSpawnScale: 0.45,
+            burstChance: 0.08,
+            burstCount: [2, 3]
+        },
+        {
+            name: 'wave',
+            levelUpScore: 40,
+            monsterSpawnRate: 0.07,
+            monsterSpeed: 7.8,
+            monsterCycleOrder: [2, 3, 0, 1],
+            spawnStyle: 'wave',
+            horizontalDrift: 0.4,
+            levelSpeedScale: 0.65,
+            levelSpawnScale: 0.5,
+            wavePeriod: 4
+        },
+        {
+            name: 'chaos',
+            levelUpScore: 35,
+            monsterSpawnRate: 0.065,
+            monsterSpeed: 9.0,
+            monsterCycleOrder: [2, 0, 3, 1],
+            spawnStyle: 'burst',
+            horizontalDrift: 0.7,
+            levelSpeedScale: 0.7,
+            levelSpawnScale: 0.6,
+            burstChance: 0.1,
+            burstCount: [2, 4]
+        },
+        {
+            name: 'slowburn',
+            levelUpScore: 60,
+            monsterSpawnRate: 0.035,
+            monsterSpeed: 6.5,
+            monsterCycleOrder: [0, 2, 1, 3],
+            spawnStyle: 'steady',
+            horizontalDrift: 0.2,
+            levelSpeedScale: 0.45,
+            levelSpawnScale: 0.4
+        }
+    ];
+
+    function pickRandomPattern(excludeName) {
+        const pool = excludeName
+            ? patternPresets.filter(function (p) { return p.name !== excludeName; })
+            : patternPresets;
+        if (pool.length === 0) return patternPresets[Math.floor(Math.random() * patternPresets.length)];
+        return pool[Math.floor(Math.random() * pool.length)];
     }
 
-    // Get available monster types - changes every 50 score
+    // Get current level based on score (uses pattern)
+    function getCurrentLevel() {
+        const step = gamePattern ? gamePattern.levelUpScore : gameSettings.levelUpScore;
+        return Math.floor(score / step) + 1;
+    }
+
+    // Get available monster types - cycle depends on pattern (different order each run)
     function getMonsterTypesForLevel() {
-        // Calculate which monster cycle we're in (every 50 points)
-        const monsterCycle = Math.floor(score / 50) % 4;
-        
-        // Cycle through monsters: 0=monster1, 1=monster2, 2=monster3, 3=monster4
-        if (monsterCycle === 0) return monsterTypeDefinitions.monster1; // 0-49: monster1
-        if (monsterCycle === 1) return monsterTypeDefinitions.monster2; // 50-99: monster2
-        if (monsterCycle === 2) return monsterTypeDefinitions.monster3; // 100-149: monster3
-        return monsterTypeDefinitions.monster4; // 150-199: monster4, then cycles back
+        const step = gamePattern ? gamePattern.levelUpScore : 50;
+        const cycle = Math.floor(score / step) % 4;
+        const order = gamePattern ? gamePattern.monsterCycleOrder : [0, 1, 2, 3];
+        const idx = order[cycle];
+        const key = MONSTER_KEYS[idx];
+        return monsterTypeDefinitions[key];
     }
 
     // Initialize finger position
@@ -1125,33 +1212,50 @@
         ctx.shadowBlur = 0;
     }
 
-    // Spawn monster - only from top, moving downward
-    function spawnMonster() {
-        // Increase spawn rate with level (more aggressive progression)
-        const spawnRate = gameSettings.monsterSpawnRate * (1 + (level - 1) * 0.5);
-        if (Math.random() < spawnRate) {
-            const availableTypes = getMonsterTypesForLevel();
-            const typeDef = availableTypes[Math.floor(Math.random() * availableTypes.length)];
-            const size = typeDef.size;
-            
-            // Spawn only from top
-            const x = Math.random() * canvas.width;
-            const y = -size;
-            
-            // Move downward only (slight horizontal variation for visual interest)
-            const vx = (Math.random() - 0.5) * 0.3; // Small horizontal drift
-            // Speed increases every 50 score (each level) - more aggressive scaling
-            const vy = gameSettings.monsterSpeed * (1 + (level - 1) * 0.6) + Math.random() * 0.8; // Faster downward movement with aggressive level scaling
+    function addOneMonster(atX) {
+        const availableTypes = getMonsterTypesForLevel();
+        const typeDef = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+        const size = typeDef.size;
+        const p = gamePattern || {};
+        const baseSpeed = p.monsterSpeed != null ? p.monsterSpeed : gameSettings.monsterSpeed;
+        const speedScale = (p.levelSpeedScale != null ? p.levelSpeedScale : 0.6);
+        const drift = (p.horizontalDrift != null ? p.horizontalDrift : 0.3);
+        const x = atX != null ? atX : Math.random() * canvas.width;
+        const y = -size;
+        const vx = (Math.random() - 0.5) * 2 * drift;
+        const vy = baseSpeed * (1 + (level - 1) * speedScale) + Math.random() * 0.8;
+        monsters.push({
+            x: x, y: y, vx: vx, vy: vy, typeDef: typeDef,
+            rotation: Math.random() * Math.PI * 2,
+            rotationSpeed: (Math.random() > 0.5 ? 1 : -1) * (0.14 + Math.random() * 0.12)
+        });
+    }
 
-            monsters.push({
-                x: x,
-                y: y,
-                vx: vx,
-                vy: vy,
-                typeDef: typeDef,
-                rotation: Math.random() * Math.PI * 2,
-                rotationSpeed: (Math.random() - 0.5) * 0.05
-            });
+    // Spawn monster - pattern determines rate, style (steady / burst / wave)
+    function spawnMonster() {
+        const p = gamePattern || {};
+        const baseRate = p.monsterSpawnRate != null ? p.monsterSpawnRate : gameSettings.monsterSpawnRate;
+        const spawnScale = p.levelSpawnScale != null ? p.levelSpawnScale : 0.5;
+        let spawnRate = baseRate * (1 + (level - 1) * spawnScale);
+
+        if (p.spawnStyle === 'wave' && p.wavePeriod) {
+            const t = patternTime * 0.001;
+            const wave = 0.5 + 0.5 * Math.sin((2 * Math.PI / p.wavePeriod) * t);
+            spawnRate *= 0.4 + 0.6 * wave;
+        }
+
+        if (Math.random() < spawnRate) {
+            addOneMonster();
+        }
+
+        if (p.spawnStyle === 'burst' && p.burstChance && Math.random() < p.burstChance) {
+            const [minB, maxB] = p.burstCount || [2, 3];
+            const n = minB + Math.floor(Math.random() * (maxB - minB + 1));
+            const baseX = Math.random() * canvas.width;
+            for (let i = 0; i < n; i++) {
+                const offset = (Math.random() - 0.5) * 120;
+                addOneMonster(Math.max(40, Math.min(canvas.width - 40, baseX + offset)));
+            }
         }
     }
 
@@ -1238,6 +1342,7 @@
         const deltaTime = currentTime - lastTime;
         lastTime = currentTime;
         const clampedDelta = Math.min(deltaTime, 50);
+        patternTime += clampedDelta;
 
         // Update score (survival-based - increases automatically)
         scoreTimer += clampedDelta;
@@ -1272,6 +1377,9 @@
                 hapticLevelUp();
                 createParticles(canvas.width / 2, canvas.height / 2, '#4ECDC4', 25);
             }
+            if (levelBadgeEl) {
+                levelBadgeEl.textContent = 'Lv.' + level;
+            }
         }
 
         // Update finger position (smooth movement)
@@ -1302,7 +1410,7 @@
         // Spawn monsters
         spawnMonster();
 
-        // Update and draw monsters
+        // Update and draw monsters (they spin via rotation)
         for (let i = monsters.length - 1; i >= 0; i--) {
             const monster = monsters[i];
             const result = updateMonster(monster);
@@ -1331,12 +1439,15 @@
         level = 1;
         scoreTimer = 0;
         lastMilestoneScore = 0;
+        patternTime = 0;
+        gamePattern = pickRandomPattern(gamePattern ? gamePattern.name : null);
         monsters.length = 0;
         particles.length = 0;
         gameRunning = true;
         lastTime = performance.now();
         backgroundAnimationTime = 0;
         scoreEl.textContent = '0';
+        if (levelBadgeEl) levelBadgeEl.textContent = 'Lv.1';
         gameOverEl.style.display = 'none';
         newRecordEl.style.display = 'none';
         // Hide start screen and corner buttons

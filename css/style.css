@@ -191,17 +191,35 @@ body::before {
 #ui {
     position: fixed;
     top: 45px; /* Default desktop safe area - updated by JS */
-    left: 10px;
-    right: 10px;
+    left: 12px;
+    right: 12px;
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
+    gap: 12px;
     z-index: 10;
     pointer-events: none;
 }
 
 #ui > * {
     pointer-events: auto;
+}
+
+#levelBadge {
+    background: linear-gradient(135deg, rgba(255, 107, 53, 0.95) 0%, rgba(255, 140, 90, 0.95) 100%);
+    padding: 10px 18px;
+    border-radius: 24px;
+    font-size: 18px;
+    font-weight: 700;
+    font-family: 'Orbitron', 'Rajdhani', monospace;
+    color: var(--text-white);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    box-shadow: 
+        0 4px 15px rgba(255, 107, 53, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    letter-spacing: 1px;
+    font-variant-numeric: tabular-nums;
 }
 
 .settings-button {
@@ -368,21 +386,21 @@ body::before {
 
 #score {
     background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
-    padding: 14px 28px;
-    border-radius: 32px;
-    font-size: 38px;
+    padding: 12px 26px;
+    border-radius: 28px;
+    font-size: 32px;
     font-weight: 700;
     font-family: 'Orbitron', 'Rajdhani', monospace;
     color: var(--text-white);
     text-shadow: 
-        0 0 15px rgba(255, 255, 255, 0.7),
-        2px 2px 6px rgba(0, 0, 0, 0.5),
-        0 0 30px rgba(78, 205, 196, 0.8);
+        0 0 12px rgba(255, 255, 255, 0.6),
+        2px 2px 5px rgba(0, 0, 0, 0.4),
+        0 0 25px rgba(78, 205, 196, 0.7);
     box-shadow: 
         var(--shadow-md),
         var(--glow-primary),
         inset 0 1px 0 rgba(255, 255, 255, 0.4);
-    border: 3px solid var(--glass-border);
+    border: 2px solid var(--glass-border);
     letter-spacing: 2px;
     transition: transform 0.1s ease, box-shadow 0.1s ease;
     animation: scorePulse 2s ease-in-out infinite;
@@ -560,21 +578,26 @@ body::before {
 
 #instructions {
     position: fixed;
-    bottom: 10px;
+    bottom: 20px;
     left: 50%;
     transform: translateX(-50%);
-    color: rgba(255, 255, 255, 0.9);
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0.25) 100%);
+    backdrop-filter: blur(10px);
+    color: rgba(255, 255, 255, 0.95);
     text-align: center;
-    font-size: 16px;
-    font-weight: 600;
+    font-size: 15px;
+    font-weight: 700;
     font-family: 'Rajdhani', sans-serif;
-    opacity: 0.9;
+    padding: 10px 20px;
+    border-radius: 20px;
     pointer-events: none;
-    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
     animation: instructionPulse 2s ease-in-out infinite;
     z-index: 10;
-    letter-spacing: 1px;
+    letter-spacing: 1.5px;
     text-transform: uppercase;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
 @keyframes instructionPulse {
@@ -1190,8 +1213,17 @@ body::before {
         font-size: 28px;
     }
     #score {
-        font-size: 24px;
+        font-size: 26px;
         padding: 10px 20px;
+    }
+    #levelBadge {
+        font-size: 15px;
+        padding: 8px 14px;
+    }
+    #instructions {
+        font-size: 13px;
+        padding: 8px 16px;
+        bottom: 16px;
     }
     #highScore {
         font-size: 18px;
