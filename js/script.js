@@ -18,10 +18,15 @@
     // Audio context for sound generation
     let audioContext = null;
     let backgroundMusicPlaying = false;
+    let backgroundMusicOscillators = [];
     let lastMilestoneScore = 0;
     
     // Particle system for visual effects
     const particles = [];
+    
+    // Background animation particles
+    const backgroundParticles = [];
+    let backgroundAnimationTime = 0;
     
     // Haptic feedback support
     let hapticEnabled = false;
@@ -175,9 +180,37 @@
     }
     
     function playCollisionSound() {
-        // Harsh sound for collision
-        playTone(150, 0.2, 'sawtooth', 0.4);
-        playTone(100, 0.2, 'sawtooth', 0.3);
+        // More dramatic and impactful sound for collision
+        playTone(80, 0.3, 'sawtooth', 0.6);
+        playTone(60, 0.3, 'sawtooth', 0.5);
+        setTimeout(() => playTone(100, 0.2, 'sawtooth', 0.4), 100);
+        setTimeout(() => playTone(120, 0.15, 'sawtooth', 0.3), 200);
+    }
+    
+    function playGameOverSound() {
+        // Dramatic descending game over sound - more impactful and emotional
+        if (!audioContext) return;
+        
+        // Low dramatic impact
+        playTone(150, 0.4, 'sawtooth', 0.7);
+        playTone(120, 0.4, 'sawtooth', 0.6);
+        
+        // Descending tones for dramatic effect
+        setTimeout(() => {
+            playTone(100, 0.3, 'sawtooth', 0.5);
+            playTone(80, 0.3, 'sawtooth', 0.4);
+        }, 200);
+        
+        // Final low impact
+        setTimeout(() => {
+            playTone(60, 0.5, 'sawtooth', 0.6);
+            playTone(50, 0.5, 'sawtooth', 0.5);
+        }, 400);
+        
+        // Subtle high tone for contrast
+        setTimeout(() => {
+            playTone(200, 0.2, 'sine', 0.3);
+        }, 600);
     }
     
     function playNearMissSound() {
@@ -207,23 +240,23 @@
     }
     
     function hapticSwipe() {
-        triggerHaptic(10); // Short vibration for swipe
+        triggerHaptic(25); // Stronger vibration for swipe
     }
     
     function hapticCollision() {
-        triggerHaptic([50, 30, 50]); // Strong vibration pattern for collision
+        triggerHaptic([100, 50, 100, 50, 150]); // Much stronger vibration pattern for collision
     }
     
     function hapticNearMiss() {
-        triggerHaptic(20); // Medium vibration for near miss
+        triggerHaptic(40); // Stronger vibration for near miss
     }
     
     function hapticScore() {
-        triggerHaptic(5); // Very light vibration for score
+        triggerHaptic(15); // Stronger vibration for score
     }
     
     function hapticLevelUp() {
-        triggerHaptic([30, 50, 30, 50]); // Celebration pattern
+        triggerHaptic([50, 30, 50, 30, 80, 30, 100]); // Stronger celebration pattern
     }
     
     // Play milestone sound (100, 200, 300, etc.)
@@ -248,6 +281,61 @@
                 size: 3 + Math.random() * 4,
                 color: color
             });
+        }
+    }
+    
+    // Initialize background particles for animated background
+    function initBackgroundParticles() {
+        backgroundParticles.length = 0;
+        const particleCount = 40;
+        for (let i = 0; i < particleCount; i++) {
+            backgroundParticles.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                vx: (Math.random() - 0.5) * 0.8,
+                vy: (Math.random() - 0.5) * 0.8,
+                size: 3 + Math.random() * 5,
+                opacity: 0.15 + Math.random() * 0.25,
+                color: `hsl(${180 + Math.random() * 60}, 70%, ${70 + Math.random() * 20}%)`,
+                glow: Math.random() > 0.7 // Some particles have glow
+            });
+        }
+    }
+    
+    // Update and draw background particles
+    function updateBackgroundParticles() {
+        if (!gameRunning) return;
+        
+        backgroundAnimationTime += 0.01;
+        
+        for (let i = 0; i < backgroundParticles.length; i++) {
+            const p = backgroundParticles[i];
+            
+            // Update position
+            p.x += p.vx;
+            p.y += p.vy;
+            
+            // Wrap around screen
+            if (p.x < 0) p.x = canvas.width;
+            if (p.x > canvas.width) p.x = 0;
+            if (p.y < 0) p.y = canvas.height;
+            if (p.y > canvas.height) p.y = 0;
+            
+            // Animate opacity
+            p.opacity = 0.15 + Math.sin(backgroundAnimationTime + i) * 0.2;
+            
+            // Draw particle with glow effect
+            ctx.save();
+            if (p.glow) {
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = p.color;
+            }
+            ctx.globalAlpha = p.opacity;
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
         }
     }
     
@@ -284,22 +372,98 @@
         setTimeout(() => playTone(1047, 0.4, 'sine', 0.3), 450); // C6
     }
     
-    // Play background music (simple loop)
+    // Play background music (continuous looping track)
     function playBackgroundMusic() {
         if (!audioContext || backgroundMusicPlaying) return;
         
         backgroundMusicPlaying = true;
-        const playMusic = () => {
-            if (!gameRunning) {
-                backgroundMusicPlaying = false;
-                return;
-            }
+        backgroundMusicOscillators = [];
+        
+        const createContinuousLayer = (freq, type, volume, phase = 0) => {
+            if (!gameRunning || !backgroundMusicPlaying) return;
             
-            // Simple ambient tone
-            playTone(220, 2, 'sine', 0.05); // Low A3, very quiet
-            setTimeout(playMusic, 2000);
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.value = freq;
+            oscillator.type = type;
+            
+            // Smooth fade in
+            const now = audioContext.currentTime;
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(volume, now + 1);
+            gainNode.gain.setValueAtTime(volume, now + 1);
+            
+            oscillator.start(now + phase);
+            
+            backgroundMusicOscillators.push({ oscillator, gainNode });
         };
-        playMusic();
+        
+        // Create continuous ambient background music with multiple layers
+        // Bass layer - continuous low tone
+        createContinuousLayer(110, 'sine', 0.12); // A2 - slightly louder
+        
+        // Mid layer - continuous harmony
+        setTimeout(() => createContinuousLayer(220, 'sine', 0.08), 200); // A3
+        
+        // High layer - subtle melody
+        setTimeout(() => createContinuousLayer(330, 'sine', 0.05), 400); // E4
+        
+        // Additional layer for depth - very subtle
+        setTimeout(() => createContinuousLayer(165, 'triangle', 0.04), 600); // E3
+        
+        // Create a subtle rhythm pattern (every 4 seconds)
+        const createRhythmLayer = () => {
+            if (!gameRunning || !backgroundMusicPlaying) return;
+            
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.value = 440; // A4
+            oscillator.type = 'sine';
+            
+            const now = audioContext.currentTime;
+            // Quick pulse every 4 seconds
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.06, now + 0.1);
+            gainNode.gain.linearRampToValueAtTime(0, now + 0.2);
+            
+            oscillator.start(now);
+            oscillator.stop(now + 0.2);
+            
+            backgroundMusicOscillators.push({ oscillator, gainNode });
+            
+            // Schedule next pulse
+            setTimeout(() => {
+                if (gameRunning && backgroundMusicPlaying) {
+                    createRhythmLayer();
+                }
+            }, 4000);
+        };
+        
+        // Start rhythm after initial fade in
+        setTimeout(() => createRhythmLayer(), 1000);
+    }
+    
+    // Stop background music
+    function stopBackgroundMusic() {
+        backgroundMusicPlaying = false;
+        backgroundMusicOscillators.forEach(({ oscillator, gainNode }) => {
+            try {
+                gainNode.gain.cancelScheduledValues(audioContext.currentTime);
+                gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+                oscillator.stop();
+            } catch (e) {
+                // Already stopped
+            }
+        });
+        backgroundMusicOscillators = [];
     }
     
     // Show new record notification
@@ -647,6 +811,9 @@
         // Clear canvas
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+        // Draw animated background particles
+        updateBackgroundParticles();
+
         // Draw trail
         drawTrail();
 
@@ -686,11 +853,13 @@
         particles.length = 0;
         gameRunning = true;
         lastTime = performance.now();
+        backgroundAnimationTime = 0;
         scoreEl.textContent = '0';
         gameOverEl.style.display = 'none';
         newRecordEl.style.display = 'none';
         if (startScreenEl) startScreenEl.style.display = 'none';
         initFinger();
+        initBackgroundParticles();
         
         // Start background music
         if (audioContext && audioContext.state === 'suspended') {
@@ -704,11 +873,14 @@
     // End game
     function endGame() {
         gameRunning = false;
-        backgroundMusicPlaying = false;
+        stopBackgroundMusic();
         if (animationId) {
             cancelAnimationFrame(animationId);
         }
         finalScoreEl.textContent = `Final Score: ${score}`;
+        
+        // Play dramatic game over sound (better than collision sound)
+        playGameOverSound();
         
         // Check for new record
         const isNewRecord = saveHighScore(score);
@@ -716,7 +888,10 @@
             showNewRecordNotification();
         }
         
-        gameOverEl.style.display = 'block';
+        // Delay showing game over modal slightly for dramatic effect
+        setTimeout(() => {
+            gameOverEl.style.display = 'block';
+        }, 300);
     }
 
     // Touch/Mouse tracking for movement
