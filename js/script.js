@@ -1012,12 +1012,13 @@
 
     // Game configuration (defaults; pattern overrides per run)
     const gameSettings = {
-        monsterSpawnRate: 0.05,
-        monsterSpeed: 8.0,
+        monsterSpawnRate: 0.015, // Reduced for more space
+        monsterSpeed: 4.5,
         trailLength: 15,
         scoreRate: 0.1,
-        scorePerSecond: 2,
-        levelUpScore: 50
+        scorePerSecond: 1,
+        levelUpScore: 50,
+        minSpawnDistance: 200 // Minimum distance between enemies when spawning
     };
 
     // Per-run pattern (like MMM Fingers: different each play)
@@ -1029,8 +1030,8 @@
         {
             name: 'classic',
             levelUpScore: 50,
-            monsterSpawnRate: 0.05,
-            monsterSpeed: 8.0,
+            monsterSpawnRate: 0.015,
+            monsterSpeed: 4.5,
             monsterCycleOrder: [0, 1, 2, 3],
             spawnStyle: 'steady',
             horizontalDrift: 0.3,
@@ -1040,8 +1041,8 @@
         {
             name: 'reverse',
             levelUpScore: 45,
-            monsterSpawnRate: 0.06,
-            monsterSpeed: 8.5,
+            monsterSpawnRate: 0.018,
+            monsterSpeed: 4.8,
             monsterCycleOrder: [3, 2, 1, 0],
             spawnStyle: 'steady',
             horizontalDrift: 0.5,
@@ -1051,21 +1052,21 @@
         {
             name: 'burst',
             levelUpScore: 55,
-            monsterSpawnRate: 0.04,
-            monsterSpeed: 7.5,
+            monsterSpawnRate: 0.012,
+            monsterSpeed: 4.2,
             monsterCycleOrder: [1, 0, 3, 2],
             spawnStyle: 'burst',
             horizontalDrift: 0.25,
             levelSpeedScale: 0.5,
             levelSpawnScale: 0.45,
-            burstChance: 0.08,
+            burstChance: 0.05,
             burstCount: [2, 3]
         },
         {
             name: 'wave',
             levelUpScore: 40,
-            monsterSpawnRate: 0.07,
-            monsterSpeed: 7.8,
+            monsterSpawnRate: 0.02,
+            monsterSpeed: 4.6,
             monsterCycleOrder: [2, 3, 0, 1],
             spawnStyle: 'wave',
             horizontalDrift: 0.4,
@@ -1076,21 +1077,21 @@
         {
             name: 'chaos',
             levelUpScore: 35,
-            monsterSpawnRate: 0.065,
-            monsterSpeed: 9.0,
+            monsterSpawnRate: 0.022,
+            monsterSpeed: 5.0,
             monsterCycleOrder: [2, 0, 3, 1],
             spawnStyle: 'burst',
             horizontalDrift: 0.7,
             levelSpeedScale: 0.7,
             levelSpawnScale: 0.6,
-            burstChance: 0.1,
+            burstChance: 0.06,
             burstCount: [2, 4]
         },
         {
             name: 'slowburn',
             levelUpScore: 60,
-            monsterSpawnRate: 0.035,
-            monsterSpeed: 6.5,
+            monsterSpawnRate: 0.01,
+            monsterSpeed: 3.8,
             monsterCycleOrder: [0, 2, 1, 3],
             spawnStyle: 'steady',
             horizontalDrift: 0.2,
@@ -1113,14 +1114,14 @@
         return Math.floor(score / step) + 1;
     }
 
-    // Get available monster types - cycle depends on pattern (different order each run)
+    // Get available monster types - now returns ALL types for variety
     function getMonsterTypesForLevel() {
-        const step = gamePattern ? gamePattern.levelUpScore : 50;
-        const cycle = Math.floor(score / step) % 4;
-        const order = gamePattern ? gamePattern.monsterCycleOrder : [0, 1, 2, 3];
-        const idx = order[cycle];
-        const key = MONSTER_KEYS[idx];
-        return monsterTypeDefinitions[key];
+        // Return all monster types mixed together for variety
+        const allTypes = [];
+        MONSTER_KEYS.forEach(key => {
+            allTypes.push(...monsterTypeDefinitions[key]);
+        });
+        return allTypes;
     }
 
     // Initialize finger position
@@ -1212,6 +1213,27 @@
         ctx.shadowBlur = 0;
     }
 
+    // Check if a position is too close to existing monsters
+    // Focus on horizontal spacing for enemies near the top of screen
+    function isPositionValid(x, y, minDistance) {
+        for (let i = 0; i < monsters.length; i++) {
+            const m = monsters[i];
+            // Only check spacing for enemies in the top portion of screen (where new ones spawn)
+            if (m.y < canvas.height * 0.3) {
+                const dx = x - m.x;
+                const dy = y - m.y;
+                // Weight horizontal distance more heavily
+                const horizontalDistance = Math.abs(dx);
+                const verticalDistance = Math.abs(dy);
+                // If horizontally close and vertically close, reject
+                if (horizontalDistance < minDistance * 0.7 && verticalDistance < minDistance) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     function addOneMonster(atX) {
         const availableTypes = getMonsterTypesForLevel();
         const typeDef = availableTypes[Math.floor(Math.random() * availableTypes.length)];
@@ -1220,8 +1242,42 @@
         const baseSpeed = p.monsterSpeed != null ? p.monsterSpeed : gameSettings.monsterSpeed;
         const speedScale = (p.levelSpeedScale != null ? p.levelSpeedScale : 0.6);
         const drift = (p.horizontalDrift != null ? p.horizontalDrift : 0.3);
-        const x = atX != null ? atX : Math.random() * canvas.width;
-        const y = -size;
+        
+        // Try to find a valid spawn position with spacing
+        let x, y;
+        let attempts = 0;
+        const maxAttempts = 10;
+        const minDistance = gameSettings.minSpawnDistance;
+        
+        if (atX != null) {
+            // If position is provided (burst spawn), use it but check spacing
+            x = atX;
+            y = -size;
+            if (!isPositionValid(x, y, minDistance)) {
+                // Try nearby positions
+                let found = false;
+                for (let offset = -150; offset <= 150 && !found; offset += 50) {
+                    const testX = Math.max(size, Math.min(canvas.width - size, x + offset));
+                    if (isPositionValid(testX, y, minDistance)) {
+                        x = testX;
+                        found = true;
+                    }
+                }
+                if (!found) return; // Skip spawn if can't find space
+            }
+        } else {
+            // Random spawn - ensure spacing
+            do {
+                x = Math.random() * canvas.width;
+                y = -size;
+                attempts++;
+            } while (!isPositionValid(x, y, minDistance) && attempts < maxAttempts);
+            
+            if (attempts >= maxAttempts) {
+                return; // Skip spawn if can't find valid position
+            }
+        }
+        
         const vx = (Math.random() - 0.5) * 2 * drift;
         const vy = baseSpeed * (1 + (level - 1) * speedScale) + Math.random() * 0.8;
         monsters.push({
@@ -1305,7 +1361,7 @@
         const dy = finger.y - monster.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         // Use smaller collision radius - only the finger tip area, not the full hand image
-        const fingerRadius = Math.min(finger.imageWidth || finger.width, finger.imageHeight || finger.height) * 0.25; // 25% of smaller dimension
+        const fingerRadius = Math.min(finger.imageWidth || finger.width, finger.imageHeight || finger.height) * 0.12; // 12% of smaller dimension - enemies must actually touch
         const monsterRadius = monster.typeDef.size / 2;
         const minDistance = fingerRadius + monsterRadius;
         const warningDistance = minDistance + 20; // Warning zone
@@ -1385,8 +1441,8 @@
         // Update finger position (smooth movement)
         const diffX = finger.targetX - finger.x;
         const diffY = finger.targetY - finger.y;
-        finger.x += diffX * 0.25;
-        finger.y += diffY * 0.25;
+        finger.x += diffX * 0.18;
+        finger.y += diffY * 0.18;
 
         // Keep finger within bounds
         finger.x = Math.max(finger.width / 2, Math.min(canvas.width - finger.width / 2, finger.x));
@@ -1463,6 +1519,14 @@
         }
         if (topRightButtons) {
             topRightButtons.style.display = 'none';
+        }
+        
+        // Show achievements and more games buttons when game starts (they're hidden on start screen)
+        if (achievementsBtn) {
+            achievementsBtn.style.display = 'flex';
+        }
+        if (moreGamesBtn) {
+            moreGamesBtn.style.display = 'flex';
         }
         
         // Hide final score container on start screen
@@ -1565,14 +1629,22 @@
             // Start start screen music
             playStartScreenMusic();
             
-            // Show corner buttons
+            // Show corner buttons (but hide unused ones on start screen)
             const topLeftButtons = document.querySelector('.top-left-buttons');
             const topRightButtons = document.querySelector('.top-right-buttons');
             if (topLeftButtons) {
                 topLeftButtons.style.display = 'flex';
+                // Hide achievements button on start screen
+                if (achievementsBtn) {
+                    achievementsBtn.style.display = 'none';
+                }
             }
             if (topRightButtons) {
                 topRightButtons.style.display = 'flex';
+                // Hide more games button on start screen
+                if (moreGamesBtn) {
+                    moreGamesBtn.style.display = 'none';
+                }
             }
             
             startScreenEl.style.display = 'flex';
@@ -1661,17 +1733,25 @@
             
             // Show start screen with current scores
             if (startScreenEl) {
-                // Show corner buttons
-                const topLeftButtons = document.querySelector('.top-left-buttons');
-                const topRightButtons = document.querySelector('.top-right-buttons');
-                if (topLeftButtons) {
-                    topLeftButtons.style.display = 'flex';
+            // Show corner buttons (but hide unused ones on start screen)
+            const topLeftButtons = document.querySelector('.top-left-buttons');
+            const topRightButtons = document.querySelector('.top-right-buttons');
+            if (topLeftButtons) {
+                topLeftButtons.style.display = 'flex';
+                // Hide achievements button on start screen
+                if (achievementsBtn) {
+                    achievementsBtn.style.display = 'none';
                 }
-                if (topRightButtons) {
-                    topRightButtons.style.display = 'flex';
+            }
+            if (topRightButtons) {
+                topRightButtons.style.display = 'flex';
+                // Hide more games button on start screen
+                if (moreGamesBtn) {
+                    moreGamesBtn.style.display = 'none';
                 }
+            }
                 
-                startScreenEl.style.display = 'flex';
+            startScreenEl.style.display = 'flex';
             }
             
             // Hide game elements
@@ -1907,14 +1987,22 @@
             startScreenEl.style.display = 'flex';
         }
         
-        // Show corner buttons on start screen
+        // Show corner buttons on start screen (but hide unused ones)
         const topLeftButtons = document.querySelector('.top-left-buttons');
         const topRightButtons = document.querySelector('.top-right-buttons');
         if (topLeftButtons) {
             topLeftButtons.style.display = 'flex';
+            // Hide achievements button on start screen (not functional)
+            if (achievementsBtn) {
+                achievementsBtn.style.display = 'none';
+            }
         }
         if (topRightButtons) {
             topRightButtons.style.display = 'flex';
+            // Hide more games button on start screen (not functional)
+            if (moreGamesBtn) {
+                moreGamesBtn.style.display = 'none';
+            }
         }
         
         // Hide final score container initially
